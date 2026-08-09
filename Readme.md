@@ -292,7 +292,7 @@ Pravesh currently follows a **Modular Monolithic Architecture**.
 ```text
                          ┌─────────────────────┐
                          │    React Frontend   │
-                         │   React + Bootstrap  │
+                         │   React + Bootstrap │
                          └──────────┬──────────┘
                                     │
                               REST / WebSocket
