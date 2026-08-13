@@ -534,9 +534,9 @@ Optional services depending on enabled features:
 # 📥 Clone the Repository
 
 ```bash
-git clone https://github.com/<your-username>/<your-repository>.git
+git clone https://github.com/PraveshTeam/Pravesh-Intelligent-Pass-Access-Control-System-for-Gated-Communities.git
 
-cd <your-repository>
+cd Pravesh-Intelligent-Pass-Access-Control-System-for-Gated-Communities
 ```
 
 ---
