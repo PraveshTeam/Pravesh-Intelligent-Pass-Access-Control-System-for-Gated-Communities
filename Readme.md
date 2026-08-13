@@ -824,11 +824,6 @@ The project follows software engineering practices including:
 
 ---
 
-# 📜 License
-
-This project is developed for **academic, learning and demonstration purposes**.
-
----
 
 # 👨‍💻 Team
 
