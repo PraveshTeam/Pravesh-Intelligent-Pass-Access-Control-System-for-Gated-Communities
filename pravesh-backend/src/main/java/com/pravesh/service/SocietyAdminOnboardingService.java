@@ -34,7 +34,6 @@ public class SocietyAdminOnboardingService {
     private final SocietyRegistrationRequestRepository requestRepository;
     private final SocietyAdminRepository societyAdminRepository;
     private final SocietyRepository societyRepository;
-    private final UserRepository userRepository;
     private final DocumentStorageService documentStorageService;
     private final com.pravesh.service.NotificationService notificationService;
 
@@ -175,9 +174,9 @@ public class SocietyAdminOnboardingService {
     }
 
     private SocietyRegistrationResponse toResponse(SocietyRegistrationRequest request) {
-        String adminName = userRepository.findById(request.getAdminUserId())
-                .map(u -> u.getName())
-                .orElse("Unknown");
+        // Was: userRepository.findById(request.getAdminUserId()) -- now a
+        // single navigation off the already-loaded request entity.
+        String adminName = request.getAdminUser() != null ? request.getAdminUser().getName() : "Unknown";
 
         return new SocietyRegistrationResponse(
                 request.getId(), request.getAdminUserId(), adminName,
