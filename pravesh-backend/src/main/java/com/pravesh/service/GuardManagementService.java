@@ -105,15 +105,22 @@ public class GuardManagementService {
     }
 
     public List<GuardResponse> listGuards(Long societyId) {
+        // Was: gateRepository.findById(g.getGateId()) and
+        // userRepository.findById(g.getUserId()) per guard -- now single
+        // navigations off each already-loaded Guard via its relationships.
         return guardRepository.findAll().stream()
                 .map(g -> {
-                    Gate gate = gateRepository.findById(g.getGateId())
-                            .orElseThrow(() -> new ResourceNotFoundException("Gate not found"));
+                    Gate gate = g.getGate();
+                    if (gate == null) {
+                        throw new ResourceNotFoundException("Gate not found");
+                    }
                     if (!gate.getSocietyId().equals(societyId)) {
                         return null;
                     }
-                    User u = userRepository.findById(g.getUserId())
-                            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                    User u = g.getUser();
+                    if (u == null) {
+                        throw new ResourceNotFoundException("User not found");
+                    }
                     return new GuardResponse(u.getId(), u.getName(), u.getPhone(),
                             gate.getId(), gate.getName(), g.getEmployeeCode(), u.isActive());
                 })
@@ -141,8 +148,12 @@ public class GuardManagementService {
         guard.setGateId(req.newGateId());
         guardRepository.save(guard);
 
-        User u = userRepository.findById(guardUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        // Was: userRepository.findById(guardUserId) -- now a single
+        // navigation off the already-loaded Guard.
+        User u = guard.getUser();
+        if (u == null) {
+            throw new ResourceNotFoundException("User not found");
+        }
 
         return new GuardResponse(u.getId(), u.getName(), u.getPhone(),
                 newGate.getId(), newGate.getName(), guard.getEmployeeCode(), u.isActive());

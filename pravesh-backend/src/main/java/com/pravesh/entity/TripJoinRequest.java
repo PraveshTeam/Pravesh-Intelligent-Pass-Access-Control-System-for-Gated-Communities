@@ -1,5 +1,6 @@
 package com.pravesh.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -18,8 +19,18 @@ public class TripJoinRequest {
     @Column(name = "trip_id", nullable = false)
     private Long tripId;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "trip_id", insertable = false, updatable = false)
+    private Trip trip;
+
     @Column(name = "requester_id", nullable = false)
     private Long requesterId;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "requester_id", insertable = false, updatable = false)
+    private User requester;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

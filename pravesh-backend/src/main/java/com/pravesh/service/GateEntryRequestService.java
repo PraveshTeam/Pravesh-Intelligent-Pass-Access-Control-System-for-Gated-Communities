@@ -25,7 +25,6 @@ public class GateEntryRequestService {
     private final GateEntryRequestRepository gateEntryRequestRepository;
     private final FlatRepository flatRepository;
     private final GuardRepository guardRepository;
-    private final UserRepository userRepository;
     private final com.pravesh.service.NotificationService notificationService;
     private final com.pravesh.service.ValidationService validationService;
 
@@ -57,7 +56,9 @@ public class GateEntryRequestService {
         entry = gateEntryRequestRepository.save(entry);
 
         try {
-            var resident = userRepository.findById(flat.getResidentId()).orElse(null);
+            // Was: userRepository.findById(flat.getResidentId()) -- now a
+            // single navigation off the already-loaded Flat (occupant).
+            var resident = flat.getOccupant();
             if (resident != null) {
                 notificationService.handleGateEntryRequest(new com.pravesh.dto.request.GateEntryNotifyRequest(
                         resident.getId(), resident.getPhone(),
@@ -150,7 +151,9 @@ public class GateEntryRequestService {
         return flatRepository.findBySocietyId(societyId).stream()
                 .filter(f -> f.getResidentId() != null)
                 .map(f -> {
-                    var user = userRepository.findById(f.getResidentId()).orElse(null);
+                    // Was: userRepository.findById(f.getResidentId()) -- now a
+                    // single navigation off the already-loaded Flat (occupant).
+                    var user = f.getOccupant();
                     if (user == null) return null;
                     return new ResidentDirectoryEntry(
                             user.getId(), user.getName(), user.getPhone(),

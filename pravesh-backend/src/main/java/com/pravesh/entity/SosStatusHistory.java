@@ -1,5 +1,6 @@
 package com.pravesh.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -22,12 +23,24 @@ public class SosStatusHistory {
     @Column(name = "sos_alert_id", nullable = false)
     private Long sosAlertId;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sos_alert_id", insertable = false, updatable = false)
+    private SosAlert sosAlert;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SosStatus status;
 
+    // Written server-side from the authenticated caller's own id, never
+    // from the request body.
     @Column(name = "changed_by_user_id", nullable = false)
     private Long changedByUserId;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "changed_by_user_id", insertable = false, updatable = false)
+    private User changedBy;
 
     @Column(name = "changed_at", nullable = false)
     private LocalDateTime changedAt;

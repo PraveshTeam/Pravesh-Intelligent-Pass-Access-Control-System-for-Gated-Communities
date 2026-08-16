@@ -32,7 +32,6 @@ public class OnboardingService {
     private final FlatAccessRequestRepository requestRepository;
     private final ResidentRepository residentRepository;
     private final FlatRepository flatRepository;
-    private final UserRepository userRepository;
     private final DocumentStorageService documentStorageService;
     private final com.pravesh.service.NotificationService notificationService;
     private final com.pravesh.service.SmsService smsService;
@@ -154,9 +153,11 @@ public class OnboardingService {
                 && !flat.getResidentId().equals(request.getUserId());
 
         if (occupiedByOther && !force) {
-            String occupantName = userRepository.findById(flat.getResidentId())
-                    .map(User::getName)
-                    .orElse("Unknown resident");
+            // Was: userRepository.findById(flat.getResidentId()) -- now a
+            // single navigation off the already-loaded Flat (occupant).
+            String occupantName = flat.getOccupant() != null
+                    ? flat.getOccupant().getName()
+                    : "Unknown resident";
             throw new FlatOccupiedException(
                     "Flat " + flat.getFlatNumber() + " is already occupied by " + occupantName,
                     flat.getResidentId(), occupantName, flat.getFlatNumber());
@@ -166,7 +167,9 @@ public class OnboardingService {
         if (occupiedByOther) {
             Resident displaced = residentRepository.findById(flat.getResidentId()).orElse(null);
             if (displaced != null) {
-                User displacedUser = userRepository.findById(displaced.getUserId()).orElse(null);
+                // Was: userRepository.findById(displaced.getUserId()) -- Resident
+                // already carries its User via the existing @MapsId relationship.
+                User displacedUser = displaced.getUser();
                 String displacedName = displacedUser != null ? displacedUser.getName()
                         : "resident #" + displaced.getUserId();
 
@@ -250,9 +253,9 @@ public class OnboardingService {
     }
 
     private OnboardingRequestResponse toResponse(FlatAccessRequest request) {
-        String userName = userRepository.findById(request.getUserId())
-                .map(User::getName)
-                .orElse("Unknown");
+        // Was: userRepository.findById(request.getUserId()) -- now a single
+        // navigation off the already-loaded FlatAccessRequest.
+        String userName = request.getUser() != null ? request.getUser().getName() : "Unknown";
 
         return new OnboardingRequestResponse(
                 request.getId(),
