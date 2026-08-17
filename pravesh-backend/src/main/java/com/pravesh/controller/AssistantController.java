@@ -8,6 +8,7 @@ import com.pravesh.service.GeminiClient;
 import com.pravesh.service.PromptBuilder;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,7 +30,7 @@ public class AssistantController {
     private final GeminiClient geminiClient;
 
     @PostMapping("/chat")
-    public ApiResponse<ChatResponse> chat(
+    public ResponseEntity<ApiResponse<ChatResponse>> chat(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @Valid @RequestBody ChatRequest req) {
 
@@ -48,6 +49,6 @@ public class AssistantController {
         String systemPrompt = promptBuilder.buildSystemPrompt(caller.role());
         String reply = geminiClient.generateReply(systemPrompt, history, message);
 
-        return ApiResponse.ok("Reply generated", new ChatResponse(reply));
+        return ResponseEntity.ok(ApiResponse.ok("Reply generated", new ChatResponse(reply)));
     }
 }

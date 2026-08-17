@@ -13,7 +13,7 @@ public class DateFormatUtil {
         try {
             return LocalDateTime.parse(isoDateTime).format(DISPLAY_FORMAT);
         } catch (DateTimeParseException e) {
-            return isoDateTime; // fall back to raw string if parsing fails
+            return isoDateTime; 
         }
     }
 }

@@ -7,6 +7,8 @@ import com.pravesh.security.AuthenticatedUser;
 import com.pravesh.service.GateService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -22,16 +24,17 @@ public class GateController {
     private final GateService gateService;
 
     @PostMapping
-    public ApiResponse<GateResponse> createGate(
+    public ResponseEntity<ApiResponse<GateResponse>> createGate(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @Valid @RequestBody CreateGateRequest req) {
-        return ApiResponse.ok("Gate created", gateService.createGate(req, caller.societyId()));
+        GateResponse response = gateService.createGate(req, caller.societyId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Gate created", response));
     }
 
     @GetMapping
-    public ApiResponse<List<GateResponse>> listGates(
+    public ResponseEntity<ApiResponse<List<GateResponse>>> listGates(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @RequestParam(defaultValue = "false") boolean unassigned) {
-        return ApiResponse.ok("Gates in your society", gateService.listGates(caller.societyId(), unassigned));
+        return ResponseEntity.ok(ApiResponse.ok("Gates in your society", gateService.listGates(caller.societyId(), unassigned)));
     }
 }
