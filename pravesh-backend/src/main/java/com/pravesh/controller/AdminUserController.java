@@ -5,8 +5,6 @@ import com.pravesh.dto.response.UserProfileResponse;
 import com.pravesh.entity.User;
 import com.pravesh.entity.enums.Role;
 import com.pravesh.exception.ResourceNotFoundException;
-import com.pravesh.repository.FlatRepository;
-import com.pravesh.repository.GateRepository;
 import com.pravesh.repository.GuardRepository;
 import com.pravesh.repository.ResidentRepository;
 import com.pravesh.repository.SocietyAdminRepository;
@@ -15,6 +13,8 @@ import com.pravesh.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.pravesh.entity.Society;
 
@@ -29,12 +29,10 @@ public class AdminUserController {
     private final UserRepository userRepository;
     private final ResidentRepository residentRepository;
     private final GuardRepository guardRepository;
-    private final GateRepository gateRepository;
-    private final FlatRepository flatRepository;
     private final SocietyAdminRepository societyAdminRepository;
 
     @GetMapping
-    public ApiResponse<List<UserProfileResponse>> listUsers(
+    public ResponseEntity<ApiResponse<List<UserProfileResponse>>> listUsers(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @RequestParam(required = false) String role) {
 
@@ -51,33 +49,31 @@ public class AdminUserController {
                         null, null, null, null, null, null, null))
                 .toList();
 
-        return ApiResponse.ok("Users", result);
+        return ResponseEntity.ok(ApiResponse.ok("Users", result));
     }
 
     @PutMapping("/{id}/status")
-    public ApiResponse<Void> toggleStatus(@PathVariable Long id, @RequestBody StatusRequest req) {
+    public ResponseEntity<ApiResponse<Void>> toggleStatus(@PathVariable Long id, @RequestBody StatusRequest req) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         user.setActive(req.isActive());
         userRepository.save(user);
-        return ApiResponse.ok(req.isActive() ? "User activated" : "User deactivated");
+        return ResponseEntity.ok(ApiResponse.ok(req.isActive() ? "User activated" : "User deactivated"));
     }
 
     private boolean belongsToSociety(User u, Long societyId) {
         if (societyId == null) return false;
+        // Was: nested findById chains (Resident->Flat, Guard->Gate) -- now
+        // single navigations off the already-loaded related entity via the
+        // mapped relationships.
         switch (u.getRole()) {
             case RESIDENT:
                 return residentRepository.findById(u.getId())
-                        .map(r -> r.getFlatId() != null &&
-                                flatRepository.findById(r.getFlatId())
-                                        .map(f -> societyId.equals(f.getSocietyId()))
-                                        .orElse(false))
+                        .map(r -> r.getFlat() != null && societyId.equals(r.getFlat().getSocietyId()))
                         .orElse(false);
             case GUARD:
                 return guardRepository.findById(u.getId())
-                        .map(g -> gateRepository.findById(g.getGateId())
-                                .map(gate -> societyId.equals(gate.getSocietyId()))
-                                .orElse(false))
+                        .map(g -> g.getGate() != null && societyId.equals(g.getGate().getSocietyId()))
                         .orElse(false);
             case SOCIETY_ADMIN:
                 return societyAdminRepository.findById(u.getId())

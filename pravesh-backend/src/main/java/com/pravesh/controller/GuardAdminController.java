@@ -10,6 +10,8 @@ import com.pravesh.service.GuardManagementService;
 import com.pravesh.service.ShiftCheckinService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -26,29 +28,30 @@ public class GuardAdminController {
     private final ShiftCheckinService shiftCheckinService;
 
     @PostMapping
-    public ApiResponse<GuardResponse> createGuard(
+    public ResponseEntity<ApiResponse<GuardResponse>> createGuard(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @Valid @RequestBody CreateGuardRequest req) {
-        return ApiResponse.ok("Guard account created. Credentials sent via SMS.",
-                guardManagementService.createGuard(req, caller.userId(), caller.societyId()));
+        GuardResponse response = guardManagementService.createGuard(req, caller.userId(), caller.societyId());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Guard account created. Credentials sent via SMS.", response));
     }
 
     @GetMapping
-    public ApiResponse<List<GuardResponse>> listGuards(@AuthenticationPrincipal AuthenticatedUser caller) {
-        return ApiResponse.ok("Guard accounts", guardManagementService.listGuards(caller.societyId()));
+    public ResponseEntity<ApiResponse<List<GuardResponse>>> listGuards(@AuthenticationPrincipal AuthenticatedUser caller) {
+        return ResponseEntity.ok(ApiResponse.ok("Guard accounts", guardManagementService.listGuards(caller.societyId())));
     }
 
     @PutMapping("/{id}/reassign-gate")
-    public ApiResponse<GuardResponse> reassignGate(
+    public ResponseEntity<ApiResponse<GuardResponse>> reassignGate(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @PathVariable Long id,
             @Valid @RequestBody ReassignGateRequest req) {
-        return ApiResponse.ok("Guard reassigned",
-                guardManagementService.reassignGate(id, req, caller.societyId()));
+        return ResponseEntity.ok(ApiResponse.ok("Guard reassigned",
+                guardManagementService.reassignGate(id, req, caller.societyId())));
     }
 
     @GetMapping("/{id}/shifts")
-    public ApiResponse<List<GuardShiftResponse>> shiftHistory(@PathVariable Long id) {
-        return ApiResponse.ok("Shift history", shiftCheckinService.getShiftHistory(id));
+    public ResponseEntity<ApiResponse<List<GuardShiftResponse>>> shiftHistory(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok("Shift history", shiftCheckinService.getShiftHistory(id)));
     }
 }

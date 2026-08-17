@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,7 +23,7 @@ public class FlatController {
     private final FlatService flatService;
 
     @GetMapping
-    public ApiResponse<List<FlatResponse>> listFlats(@AuthenticationPrincipal AuthenticatedUser caller) {
-        return ApiResponse.ok("Flats in your society", flatService.listFlats(caller.societyId()));
+    public ResponseEntity<ApiResponse<List<FlatResponse>>> listFlats(@AuthenticationPrincipal AuthenticatedUser caller) {
+        return ResponseEntity.ok(ApiResponse.ok("Flats in your society", flatService.listFlats(caller.societyId())));
     }
 }

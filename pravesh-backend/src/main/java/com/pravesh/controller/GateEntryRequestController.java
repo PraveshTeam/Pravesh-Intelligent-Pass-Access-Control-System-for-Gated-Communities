@@ -8,6 +8,8 @@ import com.pravesh.security.AuthenticatedUser;
 import com.pravesh.service.GateEntryRequestService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -23,48 +25,48 @@ public class GateEntryRequestController {
 
     @PostMapping
     @PreAuthorize("hasRole('GUARD')")
-    public ApiResponse<GateEntryRequestResponse> create(
+    public ResponseEntity<ApiResponse<GateEntryRequestResponse>> create(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @Valid @RequestBody CreateGateEntryRequest req) {
-        return ApiResponse.ok("Request sent to resident",
-                service.createRequest(req, caller.userId(), caller.societyId()));
+        GateEntryRequestResponse response = service.createRequest(req, caller.userId(), caller.societyId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Request sent to resident", response));
     }
 
     @GetMapping("/{id}/status")
     @PreAuthorize("hasRole('GUARD')")
-    public ApiResponse<GateEntryRequestResponse> status(
+    public ResponseEntity<ApiResponse<GateEntryRequestResponse>> status(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @PathVariable Long id) {
-        return ApiResponse.ok("Status", service.getStatus(id, caller.userId()));
+        return ResponseEntity.ok(ApiResponse.ok("Status", service.getStatus(id, caller.userId())));
     }
 
     @GetMapping("/pending")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ApiResponse<List<GateEntryRequestResponse>> pending(
+    public ResponseEntity<ApiResponse<List<GateEntryRequestResponse>>> pending(
             @AuthenticationPrincipal AuthenticatedUser caller) {
-        return ApiResponse.ok("Pending requests", service.getMyPendingRequests(caller.userId()));
+        return ResponseEntity.ok(ApiResponse.ok("Pending requests", service.getMyPendingRequests(caller.userId())));
     }
 
     @PutMapping("/{id}/approve")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ApiResponse<GateEntryRequestResponse> approve(
+    public ResponseEntity<ApiResponse<GateEntryRequestResponse>> approve(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @PathVariable Long id) {
-        return ApiResponse.ok("Approved", service.respond(id, caller.userId(), true));
+        return ResponseEntity.ok(ApiResponse.ok("Approved", service.respond(id, caller.userId(), true)));
     }
 
     @PutMapping("/{id}/deny")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ApiResponse<GateEntryRequestResponse> deny(
+    public ResponseEntity<ApiResponse<GateEntryRequestResponse>> deny(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @PathVariable Long id) {
-        return ApiResponse.ok("Denied", service.respond(id, caller.userId(), false));
+        return ResponseEntity.ok(ApiResponse.ok("Denied", service.respond(id, caller.userId(), false)));
     }
-    
+
     @GetMapping("/residents")
     @PreAuthorize("hasRole('GUARD')")
-    public ApiResponse<List<ResidentDirectoryEntry>> residents(
+    public ResponseEntity<ApiResponse<List<ResidentDirectoryEntry>>> residents(
             @AuthenticationPrincipal AuthenticatedUser caller) {
-        return ApiResponse.ok("Residents", service.getSocietyResidents(caller.societyId()));
+        return ResponseEntity.ok(ApiResponse.ok("Residents", service.getSocietyResidents(caller.societyId())));
     }
 }

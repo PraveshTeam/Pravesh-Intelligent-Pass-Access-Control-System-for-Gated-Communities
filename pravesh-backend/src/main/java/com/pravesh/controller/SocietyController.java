@@ -5,6 +5,7 @@ import com.pravesh.entity.Society;
 import com.pravesh.repository.SocietyRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,7 +21,7 @@ public class SocietyController {
 
     // Any authenticated user can list societies to find their own during onboarding.
     @GetMapping
-    public ApiResponse<List<SocietyListItem>> listSocieties(
+    public ResponseEntity<ApiResponse<List<SocietyListItem>>> listSocieties(
             @RequestParam(required = false) String search) {
 
         List<Society> societies = (search != null && !search.isBlank())
@@ -31,7 +32,7 @@ public class SocietyController {
                 .map(s -> new SocietyListItem(s.getId(), s.getName(), s.getAddress(), s.getCity()))
                 .toList();
 
-        return ApiResponse.ok("Societies", result);
+        return ResponseEntity.ok(ApiResponse.ok("Societies", result));
     }
 
     public record SocietyListItem(Long id, String name, String address, String city) {}

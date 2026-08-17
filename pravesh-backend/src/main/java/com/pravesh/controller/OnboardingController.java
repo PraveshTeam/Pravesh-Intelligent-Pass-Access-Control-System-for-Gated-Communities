@@ -8,6 +8,7 @@ import com.pravesh.security.AuthenticatedUser;
 import com.pravesh.service.OnboardingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,29 +26,30 @@ public class OnboardingController {
 
 	@PostMapping(value = "/api/onboarding/request", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	@PreAuthorize("hasRole('RESIDENT')")
-	public ApiResponse<OnboardingRequestResponse> submitRequest(@AuthenticationPrincipal AuthenticatedUser caller,
+	public ResponseEntity<ApiResponse<OnboardingRequestResponse>> submitRequest(@AuthenticationPrincipal AuthenticatedUser caller,
 			@RequestParam Long societyId, @RequestParam String claimedFlatNumber,
 			@RequestParam(required = false) String tower, @RequestParam DocumentType documentType,
 			@RequestParam("documentFile") MultipartFile documentFile) {
 
 		var result = onboardingService.submitRequest(caller.userId(), societyId, claimedFlatNumber, tower, documentType,
 				documentFile);
-		return ApiResponse.ok("Onboarding request submitted. Awaiting admin review.", result);
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(ApiResponse.ok("Onboarding request submitted. Awaiting admin review.", result));
 	}
 
 	@GetMapping("/api/onboarding/my-request")
 	@PreAuthorize("hasRole('RESIDENT')")
-	public ApiResponse<OnboardingRequestResponse> myRequest(@AuthenticationPrincipal AuthenticatedUser caller) {
-		return ApiResponse.ok("Latest onboarding request", onboardingService.getMyLatestRequest(caller.userId()));
+	public ResponseEntity<ApiResponse<OnboardingRequestResponse>> myRequest(@AuthenticationPrincipal AuthenticatedUser caller) {
+		return ResponseEntity.ok(ApiResponse.ok("Latest onboarding request", onboardingService.getMyLatestRequest(caller.userId())));
 	}
 
 	@GetMapping("/api/admin/onboarding/requests")
 	@PreAuthorize("hasRole('SOCIETY_ADMIN')")
-	public ApiResponse<List<OnboardingRequestResponse>> listRequests(@AuthenticationPrincipal AuthenticatedUser caller,
+	public ResponseEntity<ApiResponse<List<OnboardingRequestResponse>>> listRequests(@AuthenticationPrincipal AuthenticatedUser caller,
 			@RequestParam(defaultValue = "PENDING") String status) {
 		var results = onboardingService.listByStatus(
 				com.pravesh.entity.enums.RequestStatus.valueOf(status.toUpperCase()), caller.societyId());
-		return ApiResponse.ok("Onboarding requests", results);
+		return ResponseEntity.ok(ApiResponse.ok("Onboarding requests", results));
 	}
 
 	@GetMapping("/api/admin/onboarding/requests/{id}/document")
@@ -72,17 +74,17 @@ public class OnboardingController {
 	// Anyway" confirm button in the conflict modal sends force=true.
 	@PutMapping("/api/admin/onboarding/requests/{id}/approve")
 	@PreAuthorize("hasRole('SOCIETY_ADMIN')")
-	public ApiResponse<OnboardingRequestResponse> approve(@AuthenticationPrincipal AuthenticatedUser caller,
+	public ResponseEntity<ApiResponse<OnboardingRequestResponse>> approve(@AuthenticationPrincipal AuthenticatedUser caller,
 			@PathVariable Long id, @RequestParam(defaultValue = "false") boolean force) {
-		return ApiResponse.ok("Request approved",
-				onboardingService.approve(id, caller.userId(), caller.societyId(), force));
+		return ResponseEntity.ok(ApiResponse.ok("Request approved",
+				onboardingService.approve(id, caller.userId(), caller.societyId(), force)));
 	}
 
 	@PutMapping("/api/admin/onboarding/requests/{id}/reject")
 	@PreAuthorize("hasRole('SOCIETY_ADMIN')")
-	public ApiResponse<OnboardingRequestResponse> reject(@AuthenticationPrincipal AuthenticatedUser caller,
+	public ResponseEntity<ApiResponse<OnboardingRequestResponse>> reject(@AuthenticationPrincipal AuthenticatedUser caller,
 			@PathVariable Long id, @RequestBody ApproveRejectRequest req) {
-		return ApiResponse.ok("Request rejected",
-				onboardingService.reject(id, caller.userId(), req.reason(), caller.societyId()));
+		return ResponseEntity.ok(ApiResponse.ok("Request rejected",
+				onboardingService.reject(id, caller.userId(), req.reason(), caller.societyId())));
 	}
 }

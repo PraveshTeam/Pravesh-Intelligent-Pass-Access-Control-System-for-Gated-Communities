@@ -7,6 +7,7 @@ import com.pravesh.security.AuthenticatedUser;
 import com.pravesh.service.SocietyAdminOnboardingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,27 +25,28 @@ public class SocietyOnboardingController {
 
 	@PostMapping(value = "/api/society-onboarding/request", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	@PreAuthorize("hasRole('SOCIETY_ADMIN')")
-	public ApiResponse<SocietyRegistrationResponse> submitRequest(@AuthenticationPrincipal AuthenticatedUser caller,
+	public ResponseEntity<ApiResponse<SocietyRegistrationResponse>> submitRequest(@AuthenticationPrincipal AuthenticatedUser caller,
 			@RequestParam String societyName, @RequestParam(required = false) String address,
 			@RequestParam(required = false) String city, @RequestParam("documentFile") MultipartFile documentFile) {
 
 		var result = onboardingService.submitRequest(caller.userId(), societyName, address, city, documentFile);
-		return ApiResponse.ok("Society registration request submitted. Awaiting super admin review.", result);
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(ApiResponse.ok("Society registration request submitted. Awaiting super admin review.", result));
 	}
 
 	@GetMapping("/api/society-onboarding/my-request")
 	@PreAuthorize("hasRole('SOCIETY_ADMIN')")
-	public ApiResponse<SocietyRegistrationResponse> myRequest(@AuthenticationPrincipal AuthenticatedUser caller) {
-		return ApiResponse.ok("Latest request", onboardingService.getMyLatestRequest(caller.userId()));
+	public ResponseEntity<ApiResponse<SocietyRegistrationResponse>> myRequest(@AuthenticationPrincipal AuthenticatedUser caller) {
+		return ResponseEntity.ok(ApiResponse.ok("Latest request", onboardingService.getMyLatestRequest(caller.userId())));
 	}
 
 	@GetMapping("/api/superadmin/society-requests")
 	@PreAuthorize("hasRole('SUPER_ADMIN')")
-	public ApiResponse<List<SocietyRegistrationResponse>> listRequests(
+	public ResponseEntity<ApiResponse<List<SocietyRegistrationResponse>>> listRequests(
 			@RequestParam(defaultValue = "PENDING") String status) {
 		var results = onboardingService
 				.listByStatus(com.pravesh.entity.enums.RequestStatus.valueOf(status.toUpperCase()));
-		return ApiResponse.ok("Society registration requests", results);
+		return ResponseEntity.ok(ApiResponse.ok("Society registration requests", results));
 	}
 
 	@GetMapping("/api/superadmin/society-requests/{id}/document")
@@ -64,15 +66,15 @@ public class SocietyOnboardingController {
 
 	@PutMapping("/api/superadmin/society-requests/{id}/approve")
 	@PreAuthorize("hasRole('SUPER_ADMIN')")
-	public ApiResponse<SocietyRegistrationResponse> approve(@AuthenticationPrincipal AuthenticatedUser caller,
+	public ResponseEntity<ApiResponse<SocietyRegistrationResponse>> approve(@AuthenticationPrincipal AuthenticatedUser caller,
 			@PathVariable Long id) {
-		return ApiResponse.ok("Request approved", onboardingService.approve(id, caller.userId()));
+		return ResponseEntity.ok(ApiResponse.ok("Request approved", onboardingService.approve(id, caller.userId())));
 	}
 
 	@PutMapping("/api/superadmin/society-requests/{id}/reject")
 	@PreAuthorize("hasRole('SUPER_ADMIN')")
-	public ApiResponse<SocietyRegistrationResponse> reject(@AuthenticationPrincipal AuthenticatedUser caller,
+	public ResponseEntity<ApiResponse<SocietyRegistrationResponse>> reject(@AuthenticationPrincipal AuthenticatedUser caller,
 			@PathVariable Long id, @RequestBody ApproveRejectRequest req) {
-		return ApiResponse.ok("Request rejected", onboardingService.reject(id, caller.userId(), req.reason()));
+		return ResponseEntity.ok(ApiResponse.ok("Request rejected", onboardingService.reject(id, caller.userId(), req.reason())));
 	}
 }
