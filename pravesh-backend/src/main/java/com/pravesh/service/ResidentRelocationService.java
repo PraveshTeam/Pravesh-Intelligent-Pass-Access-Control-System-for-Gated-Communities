@@ -31,6 +31,10 @@ public class ResidentRelocationService {
 	private final ResidentRepository residentRepository;
 	private final FlatRepository flatRepository;
 	private final SocietyRepository societyRepository;
+<<<<<<< HEAD
+=======
+	private final UserRepository userRepository;
+>>>>>>> salonee
 	private final com.pravesh.service.NotificationService notificationService;
 	private final com.pravesh.service.SmsService smsService;
 	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ResidentRelocationService.class);
@@ -58,12 +62,17 @@ public class ResidentRelocationService {
 			throw new InvalidStateException("You must have a current flat before requesting relocation");
 		}
 
+<<<<<<< HEAD
 		// Was: flatRepository.findById(resident.getFlatId()) -- now a single
 		// navigation off the already-loaded Resident.
 		Flat oldFlat = resident.getFlat();
 		if (oldFlat == null) {
 			throw new ResourceNotFoundException("Current flat not found");
 		}
+=======
+		Flat oldFlat = flatRepository.findById(resident.getFlatId())
+				.orElseThrow(() -> new ResourceNotFoundException("Current flat not found"));
+>>>>>>> salonee
 
 		if (oldFlat.getSocietyId().equals(req.targetSocietyId())
 				&& oldFlat.getFlatNumber().equalsIgnoreCase(req.claimedFlatNumber())) {
@@ -110,11 +119,16 @@ public class ResidentRelocationService {
 				&& !newFlat.getResidentId().equals(request.getResidentUserId());
 
 		if (occupiedByOther && !force) {
+<<<<<<< HEAD
 			// Was: userRepository.findById(newFlat.getResidentId()) -- now a
 			// single navigation off the already-loaded Flat (occupant).
 			String occupantName = newFlat.getOccupant() != null
 					? newFlat.getOccupant().getName()
 					: "Unknown resident";
+=======
+			String occupantName = userRepository.findById(newFlat.getResidentId()).map(User::getName)
+					.orElse("Unknown resident");
+>>>>>>> salonee
 			throw new FlatOccupiedException(
 					"Flat " + request.getClaimedFlatNumber() + " is already occupied by " + occupantName,
 					newFlat.getResidentId(), occupantName, request.getClaimedFlatNumber());
@@ -124,9 +138,13 @@ public class ResidentRelocationService {
 		if (occupiedByOther) {
 			Resident displaced = residentRepository.findById(newFlat.getResidentId()).orElse(null);
 			if (displaced != null) {
+<<<<<<< HEAD
 				// Was: userRepository.findById(displaced.getUserId()) -- Resident
 				// already carries its User via the existing @MapsId relationship.
 				User displacedUser = displaced.getUser();
+=======
+				User displacedUser = userRepository.findById(displaced.getUserId()).orElse(null);
+>>>>>>> salonee
 				String displacedName = displacedUser != null ? displacedUser.getName()
 						: "resident #" + displaced.getUserId();
 
@@ -150,12 +168,20 @@ public class ResidentRelocationService {
 		// Vacate the resident's ACTUAL CURRENT flat — resolved fresh, never trusted
 		// from the request's stored old_flat_id, which can go stale between
 		// submission and approval if other operations happen in between.
+<<<<<<< HEAD
 		// Was: flatRepository.findById(resident.getFlatId()) -- now a single
 		// navigation off the already-loaded Resident.
 		if (resident.getFlatId() != null && resident.getFlat() != null) {
 			Flat currentFlat = resident.getFlat();
 			currentFlat.setResidentId(null);
 			flatRepository.save(currentFlat);
+=======
+		if (resident.getFlatId() != null) {
+			flatRepository.findById(resident.getFlatId()).ifPresent(currentFlat -> {
+				currentFlat.setResidentId(null);
+				flatRepository.save(currentFlat);
+			});
+>>>>>>> salonee
 		}
 
 		newFlat.setResidentId(request.getResidentUserId());
@@ -178,11 +204,19 @@ public class ResidentRelocationService {
 				.newSocietyId(request.getTargetSocietyId()).approvedBy(reviewerId).build());
 
 		try {
+<<<<<<< HEAD
 			// Was: three separate flatRepository/societyRepository.findById calls
 			// -- now navigations off the already-loaded request entity.
 			String oldFlatNumber = request.getOldFlat() != null ? request.getOldFlat().getFlatNumber() : "—";
 			String oldSocietyName = request.getOldSociety() != null ? request.getOldSociety().getName() : "—";
 			String newSocietyName = request.getTargetSociety() != null ? request.getTargetSociety().getName() : "—";
+=======
+			String oldFlatNumber = flatRepository.findById(request.getOldFlatId()).map(Flat::getFlatNumber).orElse("—");
+			String oldSocietyName = societyRepository.findById(request.getOldSocietyId()).map(Society::getName)
+					.orElse("—");
+			String newSocietyName = societyRepository.findById(request.getTargetSocietyId()).map(Society::getName)
+					.orElse("—");
+>>>>>>> salonee
 
 			notificationService.handleRelocationApproved(new com.pravesh.dto.request.RelocationApprovedRequest(request.getResidentUserId(),
 					newFlat.getFlatNumber(), newFlat.getTower(), newSocietyName, oldFlatNumber, oldSocietyName));
@@ -245,6 +279,7 @@ public class ResidentRelocationService {
 	}
 
 	private RelocationRequestResponse toResponse(ResidentRelocationRequest r) {
+<<<<<<< HEAD
 		// Was: four separate userRepository/flatRepository/societyRepository
 		// findById calls -- now navigations off the already-loaded request
 		// entity via the mapped relationships.
@@ -253,6 +288,12 @@ public class ResidentRelocationService {
 		String oldFlatNumber = r.getOldFlat() != null ? r.getOldFlat().getFlatNumber() : "—";
 		String oldSocietyName = r.getOldSociety() != null ? r.getOldSociety().getName() : "—";
 		String targetSocietyName = r.getTargetSociety() != null ? r.getTargetSociety().getName() : "—";
+=======
+		String residentName = userRepository.findById(r.getResidentUserId()).map(User::getName).orElse("Unknown");
+		String oldFlatNumber = flatRepository.findById(r.getOldFlatId()).map(Flat::getFlatNumber).orElse("—");
+		String oldSocietyName = societyRepository.findById(r.getOldSocietyId()).map(Society::getName).orElse("—");
+		String targetSocietyName = societyRepository.findById(r.getTargetSocietyId()).map(Society::getName).orElse("—");
+>>>>>>> salonee
 
 		return new RelocationRequestResponse(r.getId(), residentName, oldFlatNumber, oldSocietyName,
 				r.getClaimedFlatNumber(), targetSocietyName, r.getDocumentType(), r.getStatus(), r.getAdminNotes(),
