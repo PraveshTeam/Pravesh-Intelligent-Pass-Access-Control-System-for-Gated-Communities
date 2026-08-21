@@ -1,5 +1,6 @@
 package com.pravesh.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -8,8 +9,8 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "guard_shifts")
 @Getter @Setter
-@NoArgsConstructor 
-@AllArgsConstructor 
+@NoArgsConstructor
+@AllArgsConstructor
 @Builder
 public class GuardShift {
 
@@ -20,8 +21,18 @@ public class GuardShift {
     @Column(name = "guard_user_id", nullable = false)
     private Long guardUserId;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "guard_user_id", insertable = false, updatable = false)
+    private Guard guard;
+
     @Column(name = "gate_id", nullable = false)
     private Long gateId;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "gate_id", insertable = false, updatable = false)
+    private Gate gate;
 
     @Column(name = "on_duty_name", nullable = false, length = 100)
     private String onDutyName;

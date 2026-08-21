@@ -124,7 +124,10 @@ docker-compose.override.yml
 # Temporary Files
 # ================================
 
+
 *.tmp
 *.temp
 *.swp
+*.swo
 *.swo.metadata/
+.metadata/
