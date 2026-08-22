@@ -10,6 +10,7 @@ import com.pravesh.dto.response.ResidentContextResponse;
 import com.pravesh.dto.response.UserContactResponse;
 import com.pravesh.repository.SosAlertRepository;
 import com.pravesh.repository.SosStatusHistoryRepository;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,7 @@ public class SosService {
     private final SosStatusHistoryRepository historyRepository;
     private final com.pravesh.service.NotificationService notificationService;
     private final UserDirectoryService userDirectoryService;
+    private final EntityRefs refs;
 
     @Transactional
     public SosAlertResponse raise(CreateSosRequest req, Long residentUserId) {
@@ -40,16 +42,16 @@ public class SosService {
         }
 
         SosAlert alert = SosAlert.builder()
-                .residentUserId(residentUserId)
-                .flatId(ctx.flatId())
-                .societyId(ctx.societyId())
+                .resident(refs.ref(Resident.class, residentUserId))
+                .flat(refs.ref(Flat.class, ctx.flatId()))
+                .society(refs.ref(Society.class, ctx.societyId()))
                 .category(SosCategory.valueOf(req.category().toUpperCase()))
                 .description(req.description())
                 .build();
         alert = alertRepository.save(alert);
 
-        // First history row: the raise itself, "changed by" the resident who raised it.
-        recordHistory(alert.getId(), SosStatus.ACTIVE, residentUserId);
+        // First history row: the raise itself.
+        recordHistory(alert, SosStatus.ACTIVE, residentUserId);
 
         notifySosEvent("SOS_RAISED", alert, ctx.name(), ctx.phone(), ctx.flatNumber());
 
@@ -59,27 +61,22 @@ public class SosService {
     public List<SosAlertResponse> getActiveForSociety(Long societyId) {
         return alertRepository.findBySocietyIdAndStatusNotOrderByCreatedAtDesc(societyId, SosStatus.RESOLVED)
                 .stream()
-                .map(a -> toResponse(a, userDirectoryService.getResidentContext(a.getResidentUserId())))
+                .map(a -> toResponse(a, userDirectoryService.getResidentContext(a.getResident().getUserId())))
                 .toList();
     }
 
-    // New: the full incident log for a society -- ACTIVE, ACKNOWLEDGED,
-    // HELP_ON_THE_WAY, and RESOLVED alerts alike, most recent first. This is
-    // what powers the admin's SOS Incident Log screen, separate from the
-    // live-banner view (which only ever shows unresolved alerts).
+    // Full incident log for a society, including RESOLVED alerts.
     public List<SosAlertResponse> getIncidentLog(Long societyId) {
         return alertRepository.findBySocietyIdOrderByCreatedAtDesc(societyId)
                 .stream()
-                .map(a -> toResponse(a, userDirectoryService.getResidentContext(a.getResidentUserId())))
+                .map(a -> toResponse(a, userDirectoryService.getResidentContext(a.getResident().getUserId())))
                 .toList();
     }
 
-    // New: lets a resident see their OWN alerts (any status, most recent first) --
-    // this is what powers the resident-facing live-status view. Reuses the
-    // repository method that already existed but was never wired to an endpoint.
+    // A resident's own alerts, any status, most recent first.
     public List<SosAlertResponse> getMyAlerts(Long residentUserId) {
         ResidentContextResponse ctx = userDirectoryService.getResidentContext(residentUserId);
-        return alertRepository.findByResidentUserIdOrderByCreatedAtDesc(residentUserId)
+        return alertRepository.findByResident_UserIdOrderByCreatedAtDesc(residentUserId)
                 .stream()
                 .map(a -> toResponse(a, ctx))
                 .toList();
@@ -95,35 +92,32 @@ public class SosService {
 
         alert.setStatus(target);
         if (target == SosStatus.ACKNOWLEDGED) {
-            alert.setAcknowledgedBy(callerId);
+            alert.setAcknowledgedByUser(refs.ref(User.class, callerId));
             alert.setAcknowledgedAt(LocalDateTime.now());
         } else if (target == SosStatus.RESOLVED) {
             alert.setResolvedAt(LocalDateTime.now());
         }
         alertRepository.save(alert);
 
-        // Record WHO made THIS transition, for every step -- not just the one
-        // acknowledged_by column used to capture. This is the real audit trail.
-        recordHistory(alert.getId(), target, callerId);
+        // Record who made THIS transition, for every step.
+        recordHistory(alert, target, callerId);
 
-        ResidentContextResponse ctx = userDirectoryService.getResidentContext(alert.getResidentUserId());
+        ResidentContextResponse ctx = userDirectoryService.getResidentContext(alert.getResident().getUserId());
         notifySosEvent("SOS_STATUS_UPDATED", alert, ctx != null ? ctx.name() : "Unknown", null,
                 ctx != null ? ctx.flatNumber() : null);
 
         return toResponse(alert, ctx);
     }
 
-    // New: full timeline for one alert. Access restricted to GUARD/SOCIETY_ADMIN
-    // of the SAME society as the alert, or the resident who raised it -- nobody
-    // else (learned from the earlier cross-society leaks: check the actual
-    // relationship, don't just trust "any authenticated user").
+    // Full timeline for one alert. Restricted to the resident who raised it or
+    // a GUARD/SOCIETY_ADMIN of the SAME society.
     public List<SosStatusHistoryResponse> getHistory(Long alertId, Long callerId, String callerRole, Long callerSocietyId) {
         SosAlert alert = alertRepository.findById(alertId)
                 .orElseThrow(() -> new ResourceNotFoundException("Alert not found"));
 
-        boolean isOwner = alert.getResidentUserId().equals(callerId);
+        boolean isOwner = alert.getResident().getUserId().equals(callerId);
         boolean isSameSocietyResponder = ("GUARD".equals(callerRole) || "SOCIETY_ADMIN".equals(callerRole))
-                && alert.getSocietyId().equals(callerSocietyId);
+                && alert.getSociety().getId().equals(callerSocietyId);
 
         if (!isOwner && !isSameSocietyResponder) {
             throw new AccessDeniedException("You don't have access to this alert's history");
@@ -134,23 +128,20 @@ public class SosService {
                 .toList();
     }
 
-    private void recordHistory(Long alertId, SosStatus status, Long changedByUserId) {
+    private void recordHistory(SosAlert alert, SosStatus status, Long changedByUserId) {
         historyRepository.save(SosStatusHistory.builder()
-                .sosAlertId(alertId)
+                .sosAlert(alert)
                 .status(status)
-                .changedByUserId(changedByUserId)
+                .changedBy(refs.ref(User.class, changedByUserId))
                 .build());
     }
 
     private SosStatusHistoryResponse toHistoryResponse(SosStatusHistory h) {
-        String actorName = resolveActorName(h.getChangedByUserId());
-        return new SosStatusHistoryResponse(h.getStatus(), h.getChangedByUserId(), actorName, h.getChangedAt());
+        Long actorId = h.getChangedBy().getId();
+        return new SosStatusHistoryResponse(h.getStatus(), actorId, resolveActorName(actorId), h.getChangedAt());
     }
 
-    // The actor could be a RESIDENT (the initial raise) or a GUARD/SOCIETY_ADMIN
-    // (every subsequent transition) -- try the resident-specific lookup first,
-    // fall back to the generic contact lookup, and never let a name-resolution
-    // failure break the whole history list.
+    // The actor may be a RESIDENT (initial raise) or a GUARD/SOCIETY_ADMIN.
     private String resolveActorName(Long userId) {
         try {
             ResidentContextResponse ctx = userDirectoryService.getResidentContext(userId);
@@ -169,13 +160,10 @@ public class SosService {
 
     private void notifySosEvent(String eventType, SosAlert alert, String residentName, String residentPhone,
                                    String flatNumber) {
-        // Used to write an outbox row that a background poller published to
-        // RabbitMQ; now it's a direct, synchronous call to NotificationService
-        // (WebSocket push + guard/admin SMS) in the same request.
         try {
-            notificationService.handleSosEvent(eventType, alert.getId(), alert.getResidentUserId(),
+            notificationService.handleSosEvent(eventType, alert.getId(), alert.getResident().getUserId(),
                     residentName, residentPhone, flatNumber, alert.getCategory().name(),
-                    alert.getDescription(), alert.getStatus().name(), alert.getSocietyId());
+                    alert.getDescription(), alert.getStatus().name(), alert.getSociety().getId());
         } catch (Exception e) {
             log.error("Failed to dispatch SOS event {} for alert {}: {}", eventType, alert.getId(), e.getMessage());
         }

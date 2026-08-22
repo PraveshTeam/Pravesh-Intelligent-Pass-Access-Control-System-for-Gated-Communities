@@ -63,21 +63,20 @@ public class AdminUserController {
 
     private boolean belongsToSociety(User u, Long societyId) {
         if (societyId == null) return false;
-        // Was: nested findById chains (Resident->Flat, Guard->Gate) -- now
-        // single navigations off the already-loaded related entity via the
-        // mapped relationships.
         switch (u.getRole()) {
             case RESIDENT:
                 return residentRepository.findById(u.getId())
-                        .map(r -> r.getFlat() != null && societyId.equals(r.getFlat().getSocietyId()))
+                        .map(r -> r.getFlat() != null && r.getFlat().getSociety() != null
+                                && societyId.equals(r.getFlat().getSociety().getId()))
                         .orElse(false);
             case GUARD:
                 return guardRepository.findById(u.getId())
-                        .map(g -> g.getGate() != null && societyId.equals(g.getGate().getSocietyId()))
+                        .map(g -> g.getGate() != null && g.getGate().getSociety() != null
+                                && societyId.equals(g.getGate().getSociety().getId()))
                         .orElse(false);
             case SOCIETY_ADMIN:
                 return societyAdminRepository.findById(u.getId())
-                        .map(a -> societyId.equals(a.getSocietyId()))
+                        .map(a -> a.getSociety() != null && societyId.equals(a.getSociety().getId()))
                         .orElse(false);
             default:
                 return false;

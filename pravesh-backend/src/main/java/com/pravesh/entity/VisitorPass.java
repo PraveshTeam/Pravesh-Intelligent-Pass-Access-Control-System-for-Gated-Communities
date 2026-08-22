@@ -24,16 +24,10 @@ public class VisitorPass {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Raw FK -- authoritative. Always set server-side from the authenticated
-    // resident's own id (see PassService.createPass(residentId, ...)),
-    // never from request body, so IDOR/impersonation isn't possible via
-    // the relationship either.
-    @Column(name = "resident_id", nullable = false)
-    private Long residentId;
-
+    // Set server-side from the authenticated resident, never from the request body.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "resident_id", insertable = false, updatable = false)
+    @JoinColumn(name = "resident_id", nullable = false)
     private Resident resident;
 
     @Column(nullable = false, unique = true, length = 36)
@@ -69,16 +63,10 @@ public class VisitorPass {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    // Raw FK -- authoritative. Set server-side from the resident's JWT
-    // societyId claim (see PassService.createPass), never trusted from the
-    // client, and never overridable via the relationship (insertable /
-    // updatable = false below).
-    @Column(name = "society_id", nullable = false)
-    private Long societyId;
-
+    // Multi-tenancy key: set from the resident's JWT societyId claim.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "society_id", insertable = false, updatable = false)
+    @JoinColumn(name = "society_id", nullable = false)
     private Society society;
 
     @Column(name = "last_used_date")

@@ -8,9 +8,12 @@ import java.util.List;
 import java.util.Optional;
 
 public interface FlatAccessRequestRepository extends JpaRepository<FlatAccessRequest, Long> {
+
     List<FlatAccessRequest> findByStatus(RequestStatus status);
-    Optional<FlatAccessRequest> findTopByUserIdOrderByCreatedAtDesc(Long userId);
-    boolean existsByUserIdAndStatus(Long userId, RequestStatus status);
+
+    Optional<FlatAccessRequest> findTopByUser_IdOrderByCreatedAtDesc(Long userId);
+
+    boolean existsByUser_IdAndStatus(Long userId, RequestStatus status);
+
     List<FlatAccessRequest> findByStatusAndSocietyId(RequestStatus status, Long societyId);
-    
 }

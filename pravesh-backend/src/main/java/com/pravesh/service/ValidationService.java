@@ -1,6 +1,12 @@
 package com.pravesh.service;
 
 import com.pravesh.entity.EntryLog;
+import com.pravesh.entity.Gate;
+import com.pravesh.entity.Guard;
+import com.pravesh.entity.GuardShift;
+import com.pravesh.entity.Resident;
+import com.pravesh.entity.Society;
+import com.pravesh.entity.VisitorPass;
 import com.pravesh.entity.enums.EntryType;
 import com.pravesh.entity.enums.ScanResult;
 import com.pravesh.exception.ShiftRequiredException;
@@ -8,6 +14,7 @@ import com.pravesh.dto.request.VisitorEnteredRequest;
 import com.pravesh.dto.response.PassValidationResponse;
 import com.pravesh.dto.response.ShiftStatusResponse;
 import com.pravesh.repository.EntryLogRepository;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +33,7 @@ public class ValidationService {
     private final com.pravesh.service.UserDirectoryService userDirectoryService;
     private final com.pravesh.service.NotificationService notificationService;
     private final EntryLogRepository entryLogRepository;
+    private final EntityRefs refs;
 
     public PassValidationResponse scan(String uuid, Long guardId, Long gateId, Long societyId) {
         ShiftStatusResponse shiftStatus = userDirectoryService.getShiftStatus(guardId);
@@ -38,13 +46,13 @@ public class ValidationService {
         PassValidationResponse result = passService.validateAndConsume(uuid, societyId);
 
         EntryLog entryLog = EntryLog.builder()
-                .passId(result.passId())
-                .residentId(result.residentId())
+                .visitorPass(refs.ref(VisitorPass.class, result.passId()))
+                .resident(refs.ref(Resident.class, result.residentId()))
                 .visitorName(result.visitorName())
-                .guardId(guardId)
-                .gateId(gateId)
-                .societyId(societyId)
-                .shiftId(shiftStatus.shiftId())
+                .guard(refs.ref(Guard.class, guardId))
+                .gate(refs.ref(Gate.class, gateId))
+                .society(refs.ref(Society.class, societyId))
+                .shift(refs.ref(GuardShift.class, shiftStatus.shiftId()))
                 .scanResult(result.granted() ? ScanResult.GRANTED : ScanResult.DENIED)
                 .denyReason(result.granted() ? null : result.reason())
                 .build();
@@ -72,7 +80,7 @@ public class ValidationService {
     }
 
     public List<EntryLog> getEntriesByFlat(Long residentId, Long societyId) {
-        return entryLogRepository.findByResidentIdAndSocietyId(residentId, societyId);
+        return entryLogRepository.findByResident_UserIdAndSocietyId(residentId, societyId);
     }
 
     public List<EntryLog> getAllEntriesInSociety(Long societyId) {
@@ -82,11 +90,11 @@ public class ValidationService {
     public void logWalkInEntry(com.pravesh.dto.request.WalkInEntryLogRequest req) {
         EntryLog entryLog = EntryLog.builder()
                 .entryType(EntryType.WALK_IN)
-                .residentId(req.residentId())
+                .resident(refs.ref(Resident.class, req.residentId()))
                 .visitorName(req.visitorName())
-                .guardId(req.guardId())
-                .gateId(req.gateId())
-                .societyId(req.societyId())
+                .guard(refs.ref(Guard.class, req.guardId()))
+                .gate(refs.ref(Gate.class, req.gateId()))
+                .society(refs.ref(Society.class, req.societyId()))
                 .scanResult(ScanResult.valueOf(req.outcome()))
                 .denyReason(req.denyReason())
                 .build();

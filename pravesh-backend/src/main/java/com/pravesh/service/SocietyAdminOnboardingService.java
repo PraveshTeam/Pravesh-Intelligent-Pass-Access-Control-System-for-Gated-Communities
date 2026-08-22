@@ -11,7 +11,8 @@ import com.pravesh.dto.request.SocietyAdminApprovedRequest;
 import com.pravesh.repository.SocietyAdminRepository;
 import com.pravesh.repository.SocietyRegistrationRequestRepository;
 import com.pravesh.repository.SocietyRepository;
-import com.pravesh.repository.UserRepository;
+import com.pravesh.entity.User;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,7 @@ public class SocietyAdminOnboardingService {
     private final SocietyRepository societyRepository;
     private final DocumentStorageService documentStorageService;
     private final com.pravesh.service.NotificationService notificationService;
+    private final EntityRefs refs;
 
     @Transactional
     public SocietyRegistrationResponse submitRequest(
@@ -48,14 +50,14 @@ public class SocietyAdminOnboardingService {
             throw new InvalidStateException(
                     "Request not allowed — account is already " + admin.getVerificationStatus());
         }
-        if (requestRepository.existsByAdminUserIdAndStatus(adminUserId, RequestStatus.PENDING)) {
+        if (requestRepository.existsByAdminUser_IdAndStatus(adminUserId, RequestStatus.PENDING)) {
             throw new DuplicateResourceException("You already have a pending society registration request");
         }
 
         String path = documentStorageService.store(adminUserId, file);
 
         SocietyRegistrationRequest request = SocietyRegistrationRequest.builder()
-                .adminUserId(adminUserId)
+                .adminUser(refs.ref(User.class, adminUserId))
                 .societyName(societyName)
                 .address(address)
                 .city(city)
@@ -69,7 +71,7 @@ public class SocietyAdminOnboardingService {
 
     public SocietyRegistrationResponse getMyLatestRequest(Long adminUserId) {
         SocietyRegistrationRequest request = requestRepository
-                .findTopByAdminUserIdOrderByCreatedAtDesc(adminUserId)
+                .findTopByAdminUser_IdOrderByCreatedAtDesc(adminUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("No society registration request found"));
         return toResponse(request);
     }
@@ -84,7 +86,7 @@ public class SocietyAdminOnboardingService {
         SocietyRegistrationRequest request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
 
-        boolean isOwner = request.getAdminUserId().equals(callerId);
+        boolean isOwner = request.getAdminUser().getId().equals(callerId);
         boolean isSuperAdmin = "SUPER_ADMIN".equals(callerRole);
 
         if (!isOwner && !isSuperAdmin) {
@@ -123,24 +125,24 @@ public class SocietyAdminOnboardingService {
         society = societyRepository.save(society);
 
 
-        SocietyAdmin admin = societyAdminRepository.findById(request.getAdminUserId())
+        SocietyAdmin admin = societyAdminRepository.findById(request.getAdminUser().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Society admin record not found"));
 
-        admin.setSocietyId(society.getId());
+        admin.setSociety(society);
         admin.setVerificationStatus(VerificationStatus.VERIFIED);
         societyAdminRepository.save(admin);
 
         request.setStatus(RequestStatus.APPROVED);
-        request.setReviewedBy(reviewerId);
+        request.setReviewer(refs.ref(User.class, reviewerId));
         request.setReviewedAt(LocalDateTime.now());
         request = requestRepository.save(request);
 
         try {
             notificationService.handleSocietyAdminApproved(
-                    new SocietyAdminApprovedRequest(request.getAdminUserId(), society.getName()));
+                    new SocietyAdminApprovedRequest(request.getAdminUser().getId(), society.getName()));
         } catch (Exception e) {
             log.warn("Failed to notify society admin {} of approval: {}",
-                    request.getAdminUserId(), e.getMessage());
+                    request.getAdminUser().getId(), e.getMessage());
         }
 
         return toResponse(request);
@@ -161,11 +163,11 @@ public class SocietyAdminOnboardingService {
 
         request.setStatus(RequestStatus.REJECTED);
         request.setAdminNotes(reason);
-        request.setReviewedBy(reviewerId);
+        request.setReviewer(refs.ref(User.class, reviewerId));
         request.setReviewedAt(LocalDateTime.now());
         request = requestRepository.save(request);
 
-        SocietyAdmin admin = societyAdminRepository.findById(request.getAdminUserId())
+        SocietyAdmin admin = societyAdminRepository.findById(request.getAdminUser().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Society admin record not found"));
         admin.setVerificationStatus(VerificationStatus.PENDING);
         societyAdminRepository.save(admin);
@@ -174,12 +176,11 @@ public class SocietyAdminOnboardingService {
     }
 
     private SocietyRegistrationResponse toResponse(SocietyRegistrationRequest request) {
-        // Was: userRepository.findById(request.getAdminUserId()) -- now a
-        // single navigation off the already-loaded request entity.
-        String adminName = request.getAdminUser() != null ? request.getAdminUser().getName() : "Unknown";
+        User adminUser = request.getAdminUser();
+        String adminName = adminUser != null ? adminUser.getName() : "Unknown";
 
         return new SocietyRegistrationResponse(
-                request.getId(), request.getAdminUserId(), adminName,
+                request.getId(), adminUser != null ? adminUser.getId() : null, adminName,
                 request.getSocietyName(), request.getAddress(), request.getCity(),
                 request.getStatus().name(), request.getAdminNotes(),
                 request.getCreatedAt(), request.getReviewedAt());

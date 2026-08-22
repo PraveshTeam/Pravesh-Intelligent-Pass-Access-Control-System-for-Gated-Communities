@@ -4,12 +4,15 @@ import com.pravesh.dto.request.CreatePaymentOrderRequest;
 import com.pravesh.dto.response.CheckoutConfigResponse;
 import com.pravesh.dto.response.PaymentOrderResponse;
 import com.pravesh.entity.PaymentOrder;
+import com.pravesh.entity.Resident;
+import com.pravesh.entity.Society;
 import com.pravesh.entity.PaymentPurpose;
 import com.pravesh.entity.PaymentStatus;
 import com.pravesh.exception.InvalidStateException;
 import com.pravesh.exception.ResourceNotFoundException;
 import com.pravesh.dto.response.ResidentContextResponse;
 import com.pravesh.repository.PaymentOrderRepository;
+import com.pravesh.util.EntityRefs;
 import com.razorpay.RazorpayException;
 import lombok.RequiredArgsConstructor;
 import org.json.JSONObject;
@@ -36,14 +39,12 @@ public class PaymentService {
     private final com.pravesh.service.NotificationService notificationService;
     private final RazorpayGatewayService razorpayGatewayService;
     private final com.pravesh.service.UserDirectoryService userDirectoryService;
+    private final EntityRefs refs;
 
     @Transactional
     public CheckoutConfigResponse createOrder(CreatePaymentOrderRequest req, Long residentId, Long societyId) {
         if (societyId == null) {
-            // Should never happen for a properly-onboarded RESIDENT (the gateway
-            // injects X-Society-Id from the JWT), but fail loudly rather than
-            // silently saving an order with no tenant, which would be unfilterable
-            // and invisible to any admin's payment listing.
+            // Fail loudly rather than saving an order with no tenant.
             throw new InvalidStateException("Could not determine your society. Please log in again.");
         }
 
@@ -58,11 +59,8 @@ public class PaymentService {
             throw new InvalidStateException("referenceId is required for " + purpose + " payments");
         }
 
-        // Call Razorpay FIRST -- its order id doesn't depend on our own DB id,
-        // just a client-side reference string. This lets us save our entity
-        // exactly once, fully populated, instead of an insert-then-update
-        // (which would otherwise hit razorpay_order_id's NOT NULL constraint
-        // on the first save, before we even know the value).
+        // Call Razorpay FIRST so the entity is saved once, fully populated
+        // (razorpay_order_id is NOT NULL).
         String receiptRef = "pravesh-" + residentId + "-" + System.currentTimeMillis();
         String razorpayOrderId;
         try {
@@ -73,8 +71,8 @@ public class PaymentService {
         }
 
         PaymentOrder order = PaymentOrder.builder()
-                .residentId(residentId)
-                .societyId(societyId)
+                .resident(refs.ref(Resident.class, residentId))
+                .society(refs.ref(Society.class, societyId))
                 .purpose(purpose)
                 .referenceId(req.referenceId())
                 .amount(req.amount())
@@ -93,18 +91,14 @@ public class PaymentService {
                 "INR");
     }
 
-    // A resident viewing their own history already knows whose payments these
-    // are -- no need to enrich with name/flat, and no need for the extra Feign calls.
+    // A resident viewing their own history doesn't need name/flat enrichment.
     public List<PaymentOrderResponse> myHistory(Long residentId) {
-        return orderRepository.findByResidentIdOrderByCreatedAtDesc(residentId)
+        return orderRepository.findByResident_UserIdOrderByCreatedAtDesc(residentId)
                 .stream().map(o -> toResponse(o, null)).toList();
     }
 
-    // SECURITY-CRITICAL: scoped to the calling admin's OWN society. Without
-    // this filter, any SOCIETY_ADMIN could see every society's payment records --
-    // a genuine cross-tenant data leak, not just a cosmetic issue. adminSocietyId
-    // comes from the caller's JWT (X-Society-Id header), never from a request param,
-    // so an admin cannot simply pass a different societyId to view another society.
+    // Scoped to the calling admin's OWN society (adminSocietyId comes from the
+    // JWT, never from a request param) -- this is the cross-tenant leak fix.
     public List<PaymentOrderResponse> allPayments(String purpose, String status, Long adminSocietyId) {
         List<PaymentOrder> orders = orderRepository.findBySocietyIdOrderByCreatedAtDesc(adminSocietyId).stream()
                 .filter(o -> purpose == null || o.getPurpose().name().equalsIgnoreCase(purpose))
@@ -112,7 +106,7 @@ public class PaymentService {
                 .toList();
 
         Set<Long> distinctResidentIds = orders.stream()
-                .map(PaymentOrder::getResidentId)
+                .map(o -> o.getResident().getUserId())
                 .collect(Collectors.toSet());
 
         Map<Long, ResidentContextResponse> residentContextById = new HashMap<>();
@@ -123,27 +117,19 @@ public class PaymentService {
                     residentContextById.put(residentId, ctx);
                 }
             } catch (Exception e) {
-                // A resident lookup failing (e.g. account since deactivated) shouldn't
-                // break the whole admin listing -- that row just falls back to showing
-                // the raw residentId instead of a name.
+                // One failed lookup shouldn't break the whole admin listing.
                 log.warn("Could not resolve resident context for {} while building admin payment list: {}",
                         residentId, e.getMessage(), e);
             }
         }
 
         return orders.stream()
-                .map(o -> toResponse(o, residentContextById.get(o.getResidentId())))
+                .map(o -> toResponse(o, residentContextById.get(o.getResident().getUserId())))
                 .toList();
     }
 
-    /**
-     * Handles the Razorpay webhook. The signature MUST be verified before this
-     * method is even called (see PaymentController) — by the time we're here,
-     * the payload is trusted to have genuinely come from Razorpay.
-     *
-     * Idempotent: replays of the same webhook (Razorpay retries on slow/failed
-     * responses) must never double-process or re-publish a second receipt event.
-     */
+    // Signature is verified before this is called (see WebhookController).
+    // Idempotent: Razorpay retries must never double-process a receipt.
     @Transactional
     public void handlePaymentCaptured(String rawBody) {
         JSONObject payload = new JSONObject(rawBody);
@@ -158,9 +144,6 @@ public class PaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No internal order found for Razorpay order " + razorpayOrderId));
 
-        // Idempotency guard — Razorpay can and does retry webhook delivery.
-        // If we've already marked this PAID, this is a safe no-op, not a
-        // second SMS/email or a double-processed receipt.
         if (order.isWebhookVerified() && order.getStatus() == PaymentStatus.PAID) {
             log.info("Webhook for order {} already processed — skipping (idempotent no-op)", order.getId());
             return;
@@ -175,11 +158,8 @@ public class PaymentService {
     }
 
     private void notifyPaymentReceipt(PaymentOrder order) {
-        // Used to write an outbox row that a background poller published to
-        // RabbitMQ; now it's a direct, synchronous call to NotificationService
-        // (email receipt) right in the webhook request.
         try {
-            notificationService.handlePaymentReceipt(order.getId(), order.getResidentId(),
+            notificationService.handlePaymentReceipt(order.getId(), order.getResident().getUserId(),
                     order.getAmount().doubleValue(), order.getPurpose().name(), order.getPaidAt());
         } catch (Exception e) {
             log.error("Failed to dispatch payment receipt for order {}: {}", order.getId(), e.getMessage());
@@ -189,7 +169,7 @@ public class PaymentService {
     private PaymentOrderResponse toResponse(PaymentOrder o, ResidentContextResponse ctx) {
         return new PaymentOrderResponse(
                 o.getId(),
-                o.getResidentId(),
+                o.getResident().getUserId(),
                 ctx != null ? ctx.name() : null,
                 ctx != null ? ctx.flatNumber() : null,
                 o.getPurpose(),

@@ -8,6 +8,7 @@ import com.pravesh.entity.enums.VerificationStatus;
 import com.pravesh.exception.*;
 import com.pravesh.dto.request.ResidentApprovedRequest;
 import com.pravesh.repository.*;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +36,7 @@ public class OnboardingService {
     private final DocumentStorageService documentStorageService;
     private final com.pravesh.service.NotificationService notificationService;
     private final com.pravesh.service.SmsService smsService;
+    private final EntityRefs refs;
 
     @Transactional
     public OnboardingRequestResponse submitRequest(
@@ -49,7 +51,7 @@ public class OnboardingService {
                     "Onboarding request not allowed — account is already " +
                             resident.getVerificationStatus());
         }
-        if (requestRepository.existsByUserIdAndStatus(userId, RequestStatus.PENDING)) {
+        if (requestRepository.existsByUser_IdAndStatus(userId, RequestStatus.PENDING)) {
             throw new DuplicateResourceException(
                     "You already have a pending onboarding request");
         }
@@ -61,8 +63,8 @@ public class OnboardingService {
         String path = documentStorageService.store(userId, file);
 
         FlatAccessRequest request = FlatAccessRequest.builder()
-                .userId(userId)
-                .societyId(societyId)
+                .user(refs.ref(User.class, userId))
+                .society(refs.ref(Society.class, societyId))
                 .claimedFlatNumber(claimedFlatNumber)
                 .tower(tower)
                 .documentType(documentType)
@@ -76,7 +78,7 @@ public class OnboardingService {
 
     public OnboardingRequestResponse getMyLatestRequest(Long userId) {
         FlatAccessRequest request = requestRepository
-                .findTopByUserIdOrderByCreatedAtDesc(userId)
+                .findTopByUser_IdOrderByCreatedAtDesc(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("No onboarding request found"));
         return toResponse(request);
     }
@@ -91,9 +93,9 @@ public class OnboardingService {
         FlatAccessRequest request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding request not found"));
 
-        boolean isOwner = request.getUserId().equals(callerId);
+        boolean isOwner = request.getUser().getId().equals(callerId);
         boolean isAdminOfThisSociety = "SOCIETY_ADMIN".equals(callerRole)
-                && request.getSocietyId().equals(callerSocietyId);
+                && request.getSociety().getId().equals(callerSocietyId);
 
         if (!isOwner && !isAdminOfThisSociety) {
             throw new org.springframework.security.access.AccessDeniedException(
@@ -108,25 +110,14 @@ public class OnboardingService {
         return resource;
     }
 
-    /**
-     * `force` mirrors ResidentRelocationService.approve()'s exact pattern:
-     * without it, an occupied flat throws FlatOccupiedException (409, with
-     * enough detail for the admin to see who's currently there) instead of
-     * the old blunt DuplicateResourceException dead-end. With force=true,
-     * the current occupant is displaced (flatId cleared, verificationStatus
-     * reset to PENDING -- same consequence, same notification path, as a
-     * relocation-caused displacement) and the new resident takes the flat.
-     *
-     * This does NOT touch ResidentRelocationService or its swap/race-condition
-     * logic at all -- it brings onboarding's conflict handling up to the same
-     * standard that flow already had, nothing more.
-     */
+    // force=false (the normal path) rejects an occupied flat with a 409;
+    // force=true displaces the current occupant and reassigns the flat.
     @Transactional
     public OnboardingRequestResponse approve(Long requestId, Long reviewerId, Long callerSocietyId, boolean force) {
         FlatAccessRequest request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding request not found"));
 
-        if (!request.getSocietyId().equals(callerSocietyId)) {
+        if (!request.getSociety().getId().equals(callerSocietyId)) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "You are not permitted to review requests for a different society");
         }
@@ -135,45 +126,42 @@ public class OnboardingService {
             throw new InvalidStateException("This request has already been reviewed");
         }
 
+        Long requestSocietyId = request.getSociety().getId();
+        Long requestUserId = request.getUser().getId();
+
         Flat flat = flatRepository
-                .findBySocietyIdAndFlatNumber(request.getSocietyId(), request.getClaimedFlatNumber())
+                .findBySocietyIdAndFlatNumber(requestSocietyId, request.getClaimedFlatNumber())
                 .orElse(null);
 
         if (flat == null) {
             flat = Flat.builder()
-                    .societyId(request.getSocietyId())
+                    .society(request.getSociety())
                     .flatNumber(request.getClaimedFlatNumber())
                     .tower(request.getTower())
-                    .residentId(null)
+                    .occupant(null)
                     .build();
             flat = flatRepository.save(flat);
         }
 
-        boolean occupiedByOther = flat.getResidentId() != null
-                && !flat.getResidentId().equals(request.getUserId());
+        Long currentOccupantId = flat.getOccupant() != null ? flat.getOccupant().getId() : null;
+        boolean occupiedByOther = currentOccupantId != null && !currentOccupantId.equals(requestUserId);
 
         if (occupiedByOther && !force) {
-            // Was: userRepository.findById(flat.getResidentId()) -- now a
-            // single navigation off the already-loaded Flat (occupant).
-            String occupantName = flat.getOccupant() != null
-                    ? flat.getOccupant().getName()
-                    : "Unknown resident";
+            String occupantName = flat.getOccupant().getName();
             throw new FlatOccupiedException(
                     "Flat " + flat.getFlatNumber() + " is already occupied by " + occupantName,
-                    flat.getResidentId(), occupantName, flat.getFlatNumber());
+                    currentOccupantId, occupantName, flat.getFlatNumber());
         }
 
         String displacedNote = null;
         if (occupiedByOther) {
-            Resident displaced = residentRepository.findById(flat.getResidentId()).orElse(null);
+            Resident displaced = residentRepository.findById(currentOccupantId).orElse(null);
             if (displaced != null) {
-                // Was: userRepository.findById(displaced.getUserId()) -- Resident
-                // already carries its User via the existing @MapsId relationship.
                 User displacedUser = displaced.getUser();
                 String displacedName = displacedUser != null ? displacedUser.getName()
                         : "resident #" + displaced.getUserId();
 
-                displaced.setFlatId(null);
+                displaced.setFlat(null);
                 displaced.setVerificationStatus(VerificationStatus.PENDING);
                 residentRepository.save(displaced);
                 displacedNote = "Displaced " + displacedName + " from flat " + flat.getFlatNumber()
@@ -190,19 +178,19 @@ public class OnboardingService {
             }
         }
 
-        Resident resident = residentRepository.findById(request.getUserId())
+        Resident resident = residentRepository.findById(requestUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Resident record not found"));
 
-        resident.setFlatId(flat.getId());
+        resident.setFlat(flat);
         resident.setVerificationStatus(VerificationStatus.VERIFIED);
         resident.setMovedInDate(java.time.LocalDate.now());
         residentRepository.save(resident);
 
-        flat.setResidentId(request.getUserId());
+        flat.setOccupant(resident.getUser());
         flatRepository.save(flat);
 
         request.setStatus(RequestStatus.APPROVED);
-        request.setReviewedBy(reviewerId);
+        request.setReviewer(refs.ref(User.class, reviewerId));
         request.setReviewedAt(LocalDateTime.now());
         if (displacedNote != null) {
             request.setAdminNotes(displacedNote);
@@ -211,10 +199,9 @@ public class OnboardingService {
 
         try {
             notificationService.handleResidentApproved(
-                    new ResidentApprovedRequest(request.getUserId(), flat.getFlatNumber()));
+                    new ResidentApprovedRequest(requestUserId, flat.getFlatNumber()));
         } catch (Exception e) {
-            log.warn("Failed to notify resident {} of approval: {}",
-                    request.getUserId(), e.getMessage());
+            log.warn("Failed to notify resident {} of approval: {}", requestUserId, e.getMessage());
         }
 
         return toResponse(request);
@@ -229,7 +216,7 @@ public class OnboardingService {
         FlatAccessRequest request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding request not found"));
 
-        if (!request.getSocietyId().equals(callerSocietyId)) {
+        if (!request.getSociety().getId().equals(callerSocietyId)) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "You are not permitted to review requests for a different society");
         }
@@ -240,11 +227,11 @@ public class OnboardingService {
 
         request.setStatus(RequestStatus.REJECTED);
         request.setAdminNotes(reason);
-        request.setReviewedBy(reviewerId);
+        request.setReviewer(refs.ref(User.class, reviewerId));
         request.setReviewedAt(LocalDateTime.now());
         request = requestRepository.save(request);
 
-        Resident resident = residentRepository.findById(request.getUserId())
+        Resident resident = residentRepository.findById(request.getUser().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Resident record not found"));
         resident.setVerificationStatus(VerificationStatus.PENDING);
         residentRepository.save(resident);
@@ -253,13 +240,12 @@ public class OnboardingService {
     }
 
     private OnboardingRequestResponse toResponse(FlatAccessRequest request) {
-        // Was: userRepository.findById(request.getUserId()) -- now a single
-        // navigation off the already-loaded FlatAccessRequest.
-        String userName = request.getUser() != null ? request.getUser().getName() : "Unknown";
+        User user = request.getUser();
+        String userName = user != null ? user.getName() : "Unknown";
 
         return new OnboardingRequestResponse(
                 request.getId(),
-                request.getUserId(),
+                user != null ? user.getId() : null,
                 userName,
                 request.getClaimedFlatNumber(),
                 request.getTower(),

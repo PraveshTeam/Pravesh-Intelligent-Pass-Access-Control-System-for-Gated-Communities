@@ -12,6 +12,6 @@ public interface ResidentRelocationRequestRepository extends JpaRepository<Resid
     List<ResidentRelocationRequest> findByTargetSocietyIdAndStatusOrderByCreatedAtDesc(
             Long targetSocietyId, RequestStatus status);
 
-    Optional<ResidentRelocationRequest> findByResidentUserIdAndStatus(
+    Optional<ResidentRelocationRequest> findByResident_UserIdAndStatus(
             Long residentUserId, RequestStatus status);
 }

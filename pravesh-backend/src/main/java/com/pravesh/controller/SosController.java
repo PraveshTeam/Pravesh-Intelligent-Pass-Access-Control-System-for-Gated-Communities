@@ -38,18 +38,14 @@ public class SosController {
         return ResponseEntity.ok(ApiResponse.ok("Active alerts", sosService.getActiveForSociety(caller.societyId())));
     }
 
-    // New: full incident log, including RESOLVED alerts -- for reviewing past
-    // incidents rather than just what's currently live. Same access level as
-    // the active-alerts view (GUARD or SOCIETY_ADMIN of this society).
+    // Full incident log, including RESOLVED alerts.
     @GetMapping("/log")
     @PreAuthorize("hasRole('GUARD') or hasRole('SOCIETY_ADMIN')")
     public ResponseEntity<ApiResponse<List<SosAlertResponse>>> incidentLog(@AuthenticationPrincipal AuthenticatedUser caller) {
         return ResponseEntity.ok(ApiResponse.ok("Incident log", sosService.getIncidentLog(caller.societyId())));
     }
 
-    // New: lets a resident see the live status of their OWN alerts. Powers
-    // the resident-facing status banner -- fetched on page load as a
-    // reliable fallback, on top of the live WebSocket push.
+    // A resident's own alerts -- page-load fallback for the live WebSocket push.
     @GetMapping("/mine")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<ApiResponse<List<SosAlertResponse>>> mine(@AuthenticationPrincipal AuthenticatedUser caller) {
@@ -65,10 +61,7 @@ public class SosController {
         return ResponseEntity.ok(ApiResponse.ok("Status updated", sosService.updateStatus(id, body.get("status"), caller.userId())));
     }
 
-    // New: full acknowledgment/progress/resolve timeline for one alert.
-    // Access is enforced inside the service (owner or same-society responder
-    // only) rather than at the @PreAuthorize level, since "same society" and
-    // "is the owner" both need the actual alert row to check against.
+    // Access is enforced inside the service (owner or same-society responder).
     @GetMapping("/{id}/history")
     public ResponseEntity<ApiResponse<List<SosStatusHistoryResponse>>> history(
             @AuthenticationPrincipal AuthenticatedUser caller,
