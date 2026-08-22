@@ -12,10 +12,11 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Long
 
     Optional<PaymentOrder> findByRazorpayOrderId(String razorpayOrderId);
 
-    List<PaymentOrder> findByResident_UserIdOrderByCreatedAtDesc(Long residentId);
+    List<PaymentOrder> findByResidentIdOrderByCreatedAtDesc(Long residentId);
 
     List<PaymentOrder> findByPurposeAndStatusOrderByCreatedAtDesc(PaymentPurpose purpose, PaymentStatus status);
 
-    // Scoped to the admin's own society -- prevents the cross-society payment leak.
+    // Scoped to the admin's own society -- this is what fixes the cross-society
+    // data leak (an admin from one society was able to see every society's payments).
     List<PaymentOrder> findBySocietyIdOrderByCreatedAtDesc(Long societyId);
 }
