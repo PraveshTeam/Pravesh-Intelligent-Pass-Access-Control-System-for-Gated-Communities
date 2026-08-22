@@ -128,3 +128,4 @@ docker-compose.override.yml
 *.temp
 *.swp
 *.swo
+/.metadata/
