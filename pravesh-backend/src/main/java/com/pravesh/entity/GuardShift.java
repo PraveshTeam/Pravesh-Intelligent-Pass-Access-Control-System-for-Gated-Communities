@@ -18,20 +18,14 @@ public class GuardShift {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "guard_user_id", nullable = false)
-    private Long guardUserId;
-
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "guard_user_id", insertable = false, updatable = false)
+    @JoinColumn(name = "guard_user_id", nullable = false)
     private Guard guard;
 
-    @Column(name = "gate_id", nullable = false)
-    private Long gateId;
-
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "gate_id", insertable = false, updatable = false)
+    @JoinColumn(name = "gate_id", nullable = false)
     private Gate gate;
 
     @Column(name = "on_duty_name", nullable = false, length = 100)

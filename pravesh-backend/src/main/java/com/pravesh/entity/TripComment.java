@@ -5,10 +5,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
-// Mirrors forum-service's comment shape (same design pattern the roadmap calls
-// for reusing) but lives in its OWN table/database -- microservices don't
-// share tables across service boundaries, so "reuse" here means the same
-// entity design, not a literal shared row.
 @Entity
 @Table(name = "trip_comments")
 @Getter @Setter
@@ -20,22 +16,15 @@ public class TripComment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "trip_id", nullable = false)
-    private Long tripId;
-
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "trip_id", insertable = false, updatable = false)
+    @JoinColumn(name = "trip_id", nullable = false)
     private Trip trip;
 
-    // Written server-side from the authenticated caller's own id, never
-    // from the request body -- kept read-only on the relationship too.
-    @Column(name = "author_id", nullable = false)
-    private Long authorId;
-
+    // Set server-side from the authenticated caller, never from the request body.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "author_id", insertable = false, updatable = false)
+    @JoinColumn(name = "author_id", nullable = false)
     private User author;
 
     @Column(columnDefinition = "TEXT", nullable = false)

@@ -12,11 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
-// Deliberately a SEPARATE controller from PaymentController: this endpoint is
-// called by Razorpay's servers, not the frontend, is exempted from the header
-// auth filter's normal JWT-derived headers, and is authenticated purely by its
-// HMAC signature — a completely different trust model from every other endpoint
-// in this service, so it earns its own class.
+// Separate from PaymentController: called by Razorpay's servers, not the
+// frontend, and authenticated by HMAC signature rather than a JWT.
 @RestController
 @RequiredArgsConstructor
 public class WebhookController {
@@ -31,17 +28,13 @@ public class WebhookController {
             @RequestBody String rawBody,
             @RequestHeader("X-Razorpay-Signature") String signature) {
 
-        // The signature is computed over the EXACT raw bytes Razorpay sent.
-        // Never re-serialize/re-parse-then-re-stringify before this check —
-        // any reformatting changes the bytes and breaks the signature match.
+        // Signature covers the EXACT raw bytes -- never reformat before this check.
         boolean valid = razorpayGatewayService.verifyWebhookSignature(rawBody, signature);
         if (!valid) {
             throw new WebhookVerificationException("Webhook signature verification failed");
         }
 
-        // Only handle payment.captured for now — payment.failed etc. can be
-        // added the same way once needed. Unknown/irrelevant events are
-        // acknowledged with 200 so Razorpay doesn't keep retrying them forever.
+        // Unknown events are acknowledged with 200 so Razorpay stops retrying.
         if (rawBody.contains("\"event\":\"payment.captured\"")) {
             paymentService.handlePaymentCaptured(rawBody);
         } else {

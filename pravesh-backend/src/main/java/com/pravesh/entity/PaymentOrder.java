@@ -17,38 +17,25 @@ public class PaymentOrder {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "resident_id", nullable = false)
-    private Long residentId;
-
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "resident_id", insertable = false, updatable = false)
+    @JoinColumn(name = "resident_id", nullable = false)
     private Resident resident;
 
-    // CRITICAL for multi-tenancy: without this, an admin's "all payments" view
-    // has no way to be scoped to their own society, and leaks every society's
-    // payment records to every admin. Set once, at order-creation time, from
-    // the resident's own JWT societyId claim -- never trust a client-supplied
-    // value. The relationship below is deliberately insertable/updatable =
-    // false so it can ONLY ever be used for read-side joins, never as an
-    // alternate write path that could bypass the JWT-derived value.
-    @Column(name = "society_id", nullable = false)
-    private Long societyId;
-
+    // Multi-tenancy key: set at order creation from the resident's JWT claim,
+    // so an admin's "all payments" view can be scoped to their own society.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "society_id", insertable = false, updatable = false)
+    @JoinColumn(name = "society_id", nullable = false)
     private Society society;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private PaymentPurpose purpose;
 
-    // Polymorphic reference (trip_id, etc. depending on `purpose`) -- cannot
-    // be a single typed JPA relationship since the target table varies.
-    // Left as-is; resolve via the appropriate repository based on `purpose`.
+    // Polymorphic reference (target table varies by purpose) -- stays a plain id.
     @Column(name = "reference_id")
-    private Long referenceId; // e.g. trip_id if purpose = TRIP
+    private Long referenceId;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;

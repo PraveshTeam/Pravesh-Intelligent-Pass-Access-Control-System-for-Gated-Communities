@@ -21,16 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 
-/**
- * Replaces two things that existed in the microservice architecture:
- *  1) api-gateway's JwtValidator + JwtAuthenticationFilter (which validated the JWT
- *     at the edge and forwarded claims as X-User-* headers), and
- *  2) every downstream service's own HeaderAuthenticationFilter (which trusted those
- *     headers and built the AuthenticatedUser principal).
- *
- * In the monolith there is no gateway hop, so this filter validates the JWT directly
- * on every request and populates the SecurityContext in one step.
- */
+// No gateway hop in the monolith: this filter validates the JWT directly on
+// every request and populates the SecurityContext in one step.
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -74,8 +66,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 }
             } catch (JwtException | IllegalArgumentException ex) {
-                // Invalid/expired token: leave SecurityContext empty, let endpoint security
-                // rules (permitAll / authenticated) decide the outcome downstream.
+                // Invalid/expired token: leave the context empty and let the
+                // endpoint security rules decide.
                 SecurityContextHolder.clearContext();
             }
         }

@@ -3,8 +3,10 @@ package com.pravesh.service;
 import com.pravesh.dto.request.CreateGateRequest;
 import com.pravesh.dto.response.GateResponse;
 import com.pravesh.entity.Gate;
+import com.pravesh.entity.Society;
 import com.pravesh.repository.GateRepository;
 import com.pravesh.repository.GuardRepository;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,11 +19,12 @@ public class GateService {
 
     private final GateRepository gateRepository;
     private final GuardRepository guardRepository;
+    private final EntityRefs refs;
 
     @Transactional
     public GateResponse createGate(CreateGateRequest req, Long societyId) {
         Gate gate = Gate.builder()
-                .societyId(societyId)
+                .society(refs.ref(Society.class, societyId))
                 .name(req.name())
                 .location(req.location())
                 .build();

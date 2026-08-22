@@ -9,8 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 
-// Thin wrapper around the Razorpay Java SDK — isolates the third-party
-// dependency so PaymentService never touches RazorpayClient directly.
+// Thin wrapper around the Razorpay SDK.
 @Service
 public class RazorpayGatewayService {
 
@@ -31,11 +30,7 @@ public class RazorpayGatewayService {
         return keyId;
     }
 
-    /**
-     * Creates a Razorpay order and returns its order id (e.g. "order_xyz").
-     * Amount must be in paise (smallest currency unit) — Razorpay's API never
-     * accepts rupees directly, so ₹500.00 becomes 50000.
-     */
+    /** Creates a Razorpay order and returns its id. Amount is sent in paise. */
     public String createOrder(BigDecimal amountInRupees, String receiptId) throws RazorpayException {
         long amountInPaise = amountInRupees.multiply(BigDecimal.valueOf(100)).longValueExact();
 
@@ -49,16 +44,7 @@ public class RazorpayGatewayService {
         return order.get("id");
     }
 
-    /**
-     * Verifies a webhook's HMAC-SHA256 signature against the webhook secret.
-     * This is the ONLY thing that makes a webhook trustworthy — the payload
-     * itself is just JSON anyone could POST. Never mark an order PAID without
-     * this check passing first.
-     *
-     * @param rawBody   the exact, unmodified request body Razorpay sent
-     * @param signature the value of the "X-Razorpay-Signature" header
-     * @return true if the signature is valid for this exact body + our webhook secret
-     */
+    /** Verifies the webhook's HMAC-SHA256 signature. Never skip this. */
     public boolean verifyWebhookSignature(String rawBody, String signature) {
         try {
             return Utils.verifyWebhookSignature(rawBody, signature, webhookSecret);

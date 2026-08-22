@@ -16,12 +16,9 @@ public class Gate {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "society_id", nullable = false)
-    private Long societyId;
-
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "society_id", insertable = false, updatable = false)
+    @JoinColumn(name = "society_id", nullable = false)
     private Society society;
 
     @Column(nullable = false, length = 100)

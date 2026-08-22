@@ -7,21 +7,17 @@ import java.util.Optional;
 
 public interface ForumPostRepository extends JpaRepository<ForumPost, Long> {
 
-    // Top-level posts, SCOPED TO ONE SOCIETY, not soft-deleted, pinned first then newest.
-    List<ForumPost> findByParentPostIdIsNullAndSocietyIdAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(Long societyId);
+    // Top-level posts for one society, not soft-deleted, pinned first then newest.
+    List<ForumPost> findByParentPostIsNullAndSocietyIdAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(Long societyId);
 
-    List<ForumPost> findByParentPostIdIsNullAndSocietyIdAndCategoryAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(
+    List<ForumPost> findByParentPostIsNullAndSocietyIdAndCategoryAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(
             Long societyId, String category);
 
-    // Comments on a given post, oldest first. Not society-filtered directly --
-    // the service layer checks the PARENT post's societyId first (via
-    // findByIdAndSocietyIdAndDeletedAtIsNull) before ever calling this, so a
-    // comment lookup can't be reached for a post outside the caller's society.
+    // Comments on a post, oldest first. The service checks the parent post's
+    // society first, so this can't be reached for another society's post.
     List<ForumPost> findByParentPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(Long parentPostId);
 
-    // SECURITY-CRITICAL: used before any comment/pin/delete operation. Confirms
-    // the post both exists AND belongs to the caller's own society -- this is
-    // what closes the IDOR hole (a caller can no longer act on another
-    // society's post just by guessing a sequential id).
+    // Used before any comment/pin/delete: confirms the post exists AND belongs
+    // to the caller's own society, which is what closes the IDOR hole.
     Optional<ForumPost> findByIdAndSocietyIdAndDeletedAtIsNull(Long id, Long societyId);
 }

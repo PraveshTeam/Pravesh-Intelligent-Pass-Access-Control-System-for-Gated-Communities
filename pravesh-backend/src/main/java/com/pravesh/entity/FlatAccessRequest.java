@@ -20,24 +20,16 @@ public class FlatAccessRequest {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Written server-side from the authenticated caller's own id, never
-    // from the request body.
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
-
+    // Set server-side from the authenticated caller, never from the request body.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", insertable = false, updatable = false)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    // CRITICAL for multi-tenancy: set server-side from JWT, never trusted
-    // from the request body. Relationship read-only for the same reason.
-    @Column(name = "society_id", nullable = false)
-    private Long societyId;
-
+    // Multi-tenancy key: set server-side from the JWT, never from the request body.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "society_id", insertable = false, updatable = false)
+    @JoinColumn(name = "society_id", nullable = false)
     private Society society;
 
     @Column(name = "claimed_flat_number", nullable = false, length = 20)
@@ -61,14 +53,10 @@ public class FlatAccessRequest {
     @Column(name = "admin_notes", columnDefinition = "TEXT")
     private String adminNotes;
 
-    // Written server-side from the reviewing admin's own id, never from the
-    // request body.
-    @Column(name = "reviewed_by")
-    private Long reviewedBy;
-
+    // Set server-side from the reviewing admin, never from the request body.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reviewed_by", insertable = false, updatable = false)
+    @JoinColumn(name = "reviewed_by")
     private User reviewer;
 
     @Column(name = "reviewed_at")

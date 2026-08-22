@@ -16,6 +16,7 @@ import com.pravesh.dto.response.UserContactResponse;
 import com.pravesh.repository.TripCommentRepository;
 import com.pravesh.repository.TripJoinRequestRepository;
 import com.pravesh.repository.TripRepository;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,13 +40,15 @@ public class TripService {
     private final TripJoinRequestRepository joinRequestRepository;
     private final TripCommentRepository commentRepository;
     private final com.pravesh.service.UserDirectoryService userDirectoryService;
+    private final EntityRefs refs;
 
 
     // ---------- Browse / Propose ----------
 
     public List<TripResponse> listTrips(Long societyId, Long callerId) {
         List<Trip> trips = tripRepository.findBySocietyIdOrderByCreatedAtDesc(societyId);
-        Map<Long, String> names = resolveNames(trips.stream().map(Trip::getCreatorId).collect(Collectors.toSet()));
+        Map<Long, String> names = resolveNames(
+                trips.stream().map(t -> t.getCreator().getId()).collect(Collectors.toSet()));
         return trips.stream().map(t -> toTripResponse(t, names, callerId)).toList();
     }
 
@@ -55,8 +58,8 @@ public class TripService {
             throw new InvalidStateException("Could not determine your society. Please log in again.");
         }
         Trip trip = Trip.builder()
-                .creatorId(creatorId)
-                .societyId(societyId)
+                .creator(refs.ref(User.class, creatorId))
+                .society(refs.ref(Society.class, societyId))
                 .title(req.title())
                 .description(req.description())
                 .capacity(req.capacity())
@@ -74,19 +77,19 @@ public class TripService {
         Trip trip = tripRepository.findByIdAndSocietyId(tripId, callerSocietyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Trip not found: " + tripId));
 
-        if (trip.getCreatorId().equals(requesterId)) {
+        if (trip.getCreator().getId().equals(requesterId)) {
             throw new InvalidStateException("You can't request to join your own trip");
         }
         if (trip.getStatus() != TripStatus.OPEN) {
             throw new InvalidStateException("This trip is no longer accepting join requests (" + trip.getStatus() + ")");
         }
-        joinRequestRepository.findByTripIdAndRequesterId(tripId, requesterId).ifPresent(existing -> {
+        joinRequestRepository.findByTripIdAndRequester_Id(tripId, requesterId).ifPresent(existing -> {
             throw new DuplicateResourceException("You've already requested to join this trip");
         });
 
         TripJoinRequest jr = TripJoinRequest.builder()
-                .tripId(tripId)
-                .requesterId(requesterId)
+                .trip(trip)
+                .requester(refs.ref(User.class, requesterId))
                 .build();
         jr = joinRequestRepository.save(jr);
 
@@ -97,11 +100,12 @@ public class TripService {
     public List<JoinRequestResponse> listRequests(Long tripId, Long callerId, Long callerSocietyId) {
         Trip trip = tripRepository.findByIdAndSocietyId(tripId, callerSocietyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Trip not found: " + tripId));
-        if (!trip.getCreatorId().equals(callerId)) {
+        if (!trip.getCreator().getId().equals(callerId)) {
             throw new AccessDeniedException("Only the trip creator can view its join requests");
         }
         List<TripJoinRequest> requests = joinRequestRepository.findByTripIdOrderByCreatedAtAsc(tripId);
-        Map<Long, String> names = resolveNames(requests.stream().map(TripJoinRequest::getRequesterId).collect(Collectors.toSet()));
+        Map<Long, String> names = resolveNames(
+                requests.stream().map(r -> r.getRequester().getId()).collect(Collectors.toSet()));
         return requests.stream().map(r -> toJoinRequestResponse(r, names)).toList();
     }
 
@@ -110,7 +114,7 @@ public class TripService {
                                               Long callerId, Long callerSocietyId) {
         Trip trip = tripRepository.findByIdAndSocietyId(tripId, callerSocietyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Trip not found: " + tripId));
-        if (!trip.getCreatorId().equals(callerId)) {
+        if (!trip.getCreator().getId().equals(callerId)) {
             throw new AccessDeniedException("Only the trip creator can accept or reject requests");
         }
 
@@ -131,9 +135,7 @@ public class TripService {
             jr.setStatus(JoinRequestStatus.ACCEPTED);
             joinRequestRepository.save(jr);
 
-            // Capacity check AFTER accepting -- if this acceptance filled the
-            // last seat, flip the trip itself to FULL so no further join
-            // requests can be created (requestToJoin checks status == OPEN).
+            // If this acceptance filled the last seat, flip the trip to FULL.
             long acceptedNow = joinRequestRepository.countByTripIdAndStatus(tripId, JoinRequestStatus.ACCEPTED);
             if (acceptedNow >= trip.getCapacity()) {
                 trip.setStatus(TripStatus.FULL);
@@ -144,7 +146,7 @@ public class TripService {
             joinRequestRepository.save(jr);
         }
 
-        Map<Long, String> names = resolveNames(Set.of(jr.getRequesterId()));
+        Map<Long, String> names = resolveNames(Set.of(jr.getRequester().getId()));
         return toJoinRequestResponse(jr, names);
     }
 
@@ -156,7 +158,8 @@ public class TripService {
         assertParticipant(trip, callerId);
 
         List<TripComment> comments = commentRepository.findByTripIdOrderByCreatedAtAsc(tripId);
-        Map<Long, String> names = resolveNames(comments.stream().map(TripComment::getAuthorId).collect(Collectors.toSet()));
+        Map<Long, String> names = resolveNames(
+                comments.stream().map(c -> c.getAuthor().getId()).collect(Collectors.toSet()));
         return comments.stream().map(c -> toCommentResponse(c, names)).toList();
     }
 
@@ -167,8 +170,8 @@ public class TripService {
         assertParticipant(trip, callerId);
 
         TripComment comment = TripComment.builder()
-                .tripId(tripId)
-                .authorId(callerId)
+                .trip(trip)
+                .author(refs.ref(User.class, callerId))
                 .body(req.body())
                 .build();
         comment = commentRepository.save(comment);
@@ -177,12 +180,10 @@ public class TripService {
         return toCommentResponse(comment, names);
     }
 
-    // Only the creator, or a requester whose join request was ACCEPTED, may
-    // read/post in the discussion -- keeps it private to people actually going,
-    // not every resident who merely saw the trip listed.
+    // Only the creator or an ACCEPTED requester may read/post in the discussion.
     private void assertParticipant(Trip trip, Long callerId) {
-        if (trip.getCreatorId().equals(callerId)) return;
-        boolean accepted = joinRequestRepository.findByTripIdAndRequesterId(trip.getId(), callerId)
+        if (trip.getCreator().getId().equals(callerId)) return;
+        boolean accepted = joinRequestRepository.findByTripIdAndRequester_Id(trip.getId(), callerId)
                 .map(jr -> jr.getStatus() == JoinRequestStatus.ACCEPTED)
                 .orElse(false);
         if (!accepted) {
@@ -195,16 +196,15 @@ public class TripService {
     public List<ParticipantResponse> getParticipants(Long tripId, Long callerId, Long callerSocietyId) {
         Trip trip = tripRepository.findByIdAndSocietyId(tripId, callerSocietyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Trip not found: " + tripId));
-        // Same access rule as the discussion -- only the creator or an accepted
-        // participant can see who else is going (and their contact details).
+        // Same access rule as the discussion.
         assertParticipant(trip, callerId);
 
-        // LinkedHashSet keeps the creator first, then accepted participants in
-        // join order, rather than an arbitrary set iteration order.
+        // LinkedHashSet keeps the creator first, then accepted participants in join order.
+        Long creatorId = trip.getCreator().getId();
         java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
-        ids.add(trip.getCreatorId());
+        ids.add(creatorId);
         joinRequestRepository.findByTripIdAndStatus(tripId, JoinRequestStatus.ACCEPTED)
-                .forEach(jr -> ids.add(jr.getRequesterId()));
+                .forEach(jr -> ids.add(jr.getRequester().getId()));
 
         List<ParticipantResponse> result = new java.util.ArrayList<>();
         for (Long userId : ids) {
@@ -215,12 +215,11 @@ public class TripService {
                         ctx != null ? ctx.name() : null,
                         ctx != null ? ctx.phone() : null,
                         ctx != null ? ctx.flatNumber() : null,
-                        userId.equals(trip.getCreatorId())));
+                        userId.equals(creatorId)));
             } catch (Exception e) {
-                // A lookup failing for one participant shouldn't hide the whole
-                // list -- that row just shows blank contact details.
+                // One failed lookup shouldn't hide the whole list.
                 log.warn("Could not resolve participant context for {}: {}", userId, e.getMessage());
-                result.add(new ParticipantResponse(userId, null, null, null, userId.equals(trip.getCreatorId())));
+                result.add(new ParticipantResponse(userId, null, null, null, userId.equals(creatorId)));
             }
         }
         return result;
@@ -243,26 +242,29 @@ public class TripService {
 
     private TripResponse toTripResponse(Trip t, Map<Long, String> names, Long callerId) {
         long acceptedCount = joinRequestRepository.countByTripIdAndStatus(t.getId(), JoinRequestStatus.ACCEPTED);
-        String myRequestStatus = t.getCreatorId().equals(callerId)
+        Long creatorId = t.getCreator().getId();
+        String myRequestStatus = creatorId.equals(callerId)
                 ? null
-                : joinRequestRepository.findByTripIdAndRequesterId(t.getId(), callerId)
+                : joinRequestRepository.findByTripIdAndRequester_Id(t.getId(), callerId)
                         .map(jr -> jr.getStatus().name())
                         .orElse(null);
         return new TripResponse(
-                t.getId(), t.getCreatorId(), names.get(t.getCreatorId()),
+                t.getId(), creatorId, names.get(creatorId),
                 t.getTitle(), t.getDescription(), t.getCapacity(), (int) acceptedCount,
                 t.getStatus(), t.getCreatedAt(), myRequestStatus);
     }
 
     private JoinRequestResponse toJoinRequestResponse(TripJoinRequest jr, Map<Long, String> names) {
+        Long requesterId = jr.getRequester().getId();
         return new JoinRequestResponse(
-                jr.getId(), jr.getTripId(), jr.getRequesterId(), names.get(jr.getRequesterId()),
+                jr.getId(), jr.getTrip().getId(), requesterId, names.get(requesterId),
                 jr.getStatus(), jr.getCreatedAt());
     }
 
     private TripCommentResponse toCommentResponse(TripComment c, Map<Long, String> names) {
+        Long authorId = c.getAuthor().getId();
         return new TripCommentResponse(
-                c.getId(), c.getAuthorId(), names.get(c.getAuthorId()),
+                c.getId(), authorId, names.get(authorId),
                 c.getBody(), c.getCreatedAt());
     }
 }

@@ -15,6 +15,7 @@ import java.time.LocalDate;
 @Builder
 public class Resident {
 
+    // Shared primary key with users.id, derived from the user relationship.
     @Id
     @Column(name = "user_id")
     private Long userId;
@@ -24,18 +25,9 @@ public class Resident {
     @JoinColumn(name = "user_id")
     private User user;
 
-    // Raw FK column stays authoritative -- this is what services read/write.
-    @Column(name = "flat_id")
-    private Long flatId;
-
-    // Read-only relationship view of the same column, for JPA-level joins
-    // (e.g. entityManager/JPQL "resident.flat.society.id = :id" instead of
-    // manual multi-step lookups). insertable/updatable = false means this
-    // side can NEVER be used to change the FK -- only flatId can, and only
-    // from service code, never from a client-supplied request body.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "flat_id", insertable = false, updatable = false)
+    @JoinColumn(name = "flat_id")
     private Flat flat;
 
     @Enumerated(EnumType.STRING)

@@ -8,7 +8,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface SocietyRegistrationRequestRepository extends JpaRepository<SocietyRegistrationRequest, Long> {
+
     List<SocietyRegistrationRequest> findByStatus(RequestStatus status);
-    Optional<SocietyRegistrationRequest> findTopByAdminUserIdOrderByCreatedAtDesc(Long adminUserId);
-    boolean existsByAdminUserIdAndStatus(Long adminUserId, RequestStatus status);
+
+    Optional<SocietyRegistrationRequest> findTopByAdminUser_IdOrderByCreatedAtDesc(Long adminUserId);
+
+    boolean existsByAdminUser_IdAndStatus(Long adminUserId, RequestStatus status);
 }

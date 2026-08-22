@@ -6,11 +6,7 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
-/**
- * sos-service and notification-service each declared an identical WebSocketConfig
- * (one /ws STOMP endpoint, one /topic broker). Both used the same client-facing
- * path, so a single shared endpoint covers SOS alerts and notification pushes alike.
- */
+// One shared /ws STOMP endpoint for SOS alerts and notification pushes.
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {

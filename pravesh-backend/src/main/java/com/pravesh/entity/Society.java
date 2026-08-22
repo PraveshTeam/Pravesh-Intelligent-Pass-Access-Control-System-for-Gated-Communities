@@ -32,14 +32,6 @@ public class Society {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    // ---- Relationships (read-only navigation, LAZY) --------------------
-    // These are additive: every existing "societyId" foreign-key column
-    // elsewhere in the codebase is UNCHANGED and remains the value that is
-    // actually written/read by services. These collections just let you
-    // navigate society -> children via JPA instead of writing manual
-    // "findBySocietyId(...)" chains everywhere. They are never populated
-    // from client input and are excluded from JSON responses, so they
-    // cannot be used to leak or reassign a resource across tenants.
     @JsonIgnore
     @Builder.Default
     @OneToMany(mappedBy = "society", fetch = FetchType.LAZY)

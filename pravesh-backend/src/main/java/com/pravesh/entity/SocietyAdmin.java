@@ -11,6 +11,7 @@ import lombok.*;
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class SocietyAdmin {
 
+    // Shared primary key with users.id, derived from the user relationship.
     @Id
     @Column(name = "user_id")
     private Long userId;
@@ -20,14 +21,10 @@ public class SocietyAdmin {
     @JoinColumn(name = "user_id")
     private User user;
 
-    // Set server-side once the society-registration request is approved,
-    // never client-writable -- relationship read-only for the same reason.
-    @Column(name = "society_id")
-    private Long societyId;
-
+    // Set server-side once the society-registration request is approved.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "society_id", insertable = false, updatable = false)
+    @JoinColumn(name = "society_id")
     private Society society;
 
     @Column(length = 50)

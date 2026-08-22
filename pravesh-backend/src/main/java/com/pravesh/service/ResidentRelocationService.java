@@ -6,6 +6,7 @@ import com.pravesh.entity.*;
 import com.pravesh.entity.enums.*;
 import com.pravesh.exception.*;
 import com.pravesh.repository.*;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ public class ResidentRelocationService {
 	private final SocietyRepository societyRepository;
 	private final com.pravesh.service.NotificationService notificationService;
 	private final com.pravesh.service.SmsService smsService;
+	private final EntityRefs refs;
 	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ResidentRelocationService.class);
 
 	private static final String UPLOAD_DIR = "uploads/relocation-proofs/";
@@ -42,7 +44,7 @@ public class ResidentRelocationService {
 			MultipartFile documentFile) {
 
 		// A resident can only have one PENDING relocation request at a time.
-		requestRepository.findByResidentUserIdAndStatus(residentUserId, RequestStatus.PENDING).ifPresent(r -> {
+		requestRepository.findByResident_UserIdAndStatus(residentUserId, RequestStatus.PENDING).ifPresent(r -> {
 			throw new InvalidStateException("You already have a pending relocation request");
 		});
 
@@ -54,29 +56,23 @@ public class ResidentRelocationService {
 		Resident resident = residentRepository.findById(residentUserId)
 				.orElseThrow(() -> new ResourceNotFoundException("Resident not found"));
 
-		if (resident.getFlatId() == null) {
+		Flat oldFlat = resident.getFlat();
+		if (oldFlat == null) {
 			throw new InvalidStateException("You must have a current flat before requesting relocation");
 		}
 
-		// Was: flatRepository.findById(resident.getFlatId()) -- now a single
-		// navigation off the already-loaded Resident.
-		Flat oldFlat = resident.getFlat();
-		if (oldFlat == null) {
-			throw new ResourceNotFoundException("Current flat not found");
-		}
-
-		if (oldFlat.getSocietyId().equals(req.targetSocietyId())
+		if (oldFlat.getSociety().getId().equals(req.targetSocietyId())
 				&& oldFlat.getFlatNumber().equalsIgnoreCase(req.claimedFlatNumber())) {
 			throw new InvalidStateException("You are already living in this flat");
 		}
 
-		societyRepository.findById(req.targetSocietyId())
+		Society targetSociety = societyRepository.findById(req.targetSocietyId())
 				.orElseThrow(() -> new ResourceNotFoundException("Target society not found"));
 
 		String documentPath = saveDocument(documentFile);
 
-		ResidentRelocationRequest request = ResidentRelocationRequest.builder().residentUserId(residentUserId)
-				.oldFlatId(oldFlat.getId()).oldSocietyId(oldFlat.getSocietyId()).targetSocietyId(req.targetSocietyId())
+		ResidentRelocationRequest request = ResidentRelocationRequest.builder().resident(resident)
+				.oldFlat(oldFlat).oldSociety(oldFlat.getSociety()).targetSociety(targetSociety)
 				.claimedFlatNumber(req.claimedFlatNumber()).tower(req.tower()).documentType(req.documentType())
 				.documentPath(documentPath).build();
 
@@ -98,39 +94,37 @@ public class ResidentRelocationService {
 			throw new InvalidStateException("This request has already been reviewed");
 		}
 
-		Resident resident = residentRepository.findById(request.getResidentUserId())
+		Long residentUserId = request.getResident().getUserId();
+
+		Resident resident = residentRepository.findById(residentUserId)
 				.orElseThrow(() -> new ResourceNotFoundException("Resident not found"));
 
+		Society targetSociety = request.getTargetSociety();
+
 		Flat newFlat = flatRepository
-				.findBySocietyIdAndFlatNumber(request.getTargetSocietyId(), request.getClaimedFlatNumber())
-				.orElseGet(() -> flatRepository.save(Flat.builder().societyId(request.getTargetSocietyId())
+				.findBySocietyIdAndFlatNumber(targetSociety.getId(), request.getClaimedFlatNumber())
+				.orElseGet(() -> flatRepository.save(Flat.builder().society(targetSociety)
 						.flatNumber(request.getClaimedFlatNumber()).tower(request.getTower()).build()));
 
-		boolean occupiedByOther = newFlat.getResidentId() != null
-				&& !newFlat.getResidentId().equals(request.getResidentUserId());
+		Long currentOccupantId = newFlat.getOccupant() != null ? newFlat.getOccupant().getId() : null;
+		boolean occupiedByOther = currentOccupantId != null && !currentOccupantId.equals(residentUserId);
 
 		if (occupiedByOther && !force) {
-			// Was: userRepository.findById(newFlat.getResidentId()) -- now a
-			// single navigation off the already-loaded Flat (occupant).
-			String occupantName = newFlat.getOccupant() != null
-					? newFlat.getOccupant().getName()
-					: "Unknown resident";
+			String occupantName = newFlat.getOccupant().getName();
 			throw new FlatOccupiedException(
 					"Flat " + request.getClaimedFlatNumber() + " is already occupied by " + occupantName,
-					newFlat.getResidentId(), occupantName, request.getClaimedFlatNumber());
+					currentOccupantId, occupantName, request.getClaimedFlatNumber());
 		}
 
 		String displacedNote = null;
 		if (occupiedByOther) {
-			Resident displaced = residentRepository.findById(newFlat.getResidentId()).orElse(null);
+			Resident displaced = residentRepository.findById(currentOccupantId).orElse(null);
 			if (displaced != null) {
-				// Was: userRepository.findById(displaced.getUserId()) -- Resident
-				// already carries its User via the existing @MapsId relationship.
 				User displacedUser = displaced.getUser();
 				String displacedName = displacedUser != null ? displacedUser.getName()
 						: "resident #" + displaced.getUserId();
 
-				displaced.setFlatId(null);
+				displaced.setFlat(null);
 				displaced.setVerificationStatus(VerificationStatus.PENDING);
 				residentRepository.save(displaced);
 				displacedNote = "Displaced " + displacedName + " from flat " + request.getClaimedFlatNumber()
@@ -147,48 +141,42 @@ public class ResidentRelocationService {
 			}
 		}
 
-		// Vacate the resident's ACTUAL CURRENT flat — resolved fresh, never trusted
-		// from the request's stored old_flat_id, which can go stale between
-		// submission and approval if other operations happen in between.
-		// Was: flatRepository.findById(resident.getFlatId()) -- now a single
-		// navigation off the already-loaded Resident.
-		if (resident.getFlatId() != null && resident.getFlat() != null) {
-			Flat currentFlat = resident.getFlat();
-			currentFlat.setResidentId(null);
+		// Vacate the resident's ACTUAL CURRENT flat — resolved fresh, never from
+		// the request's stored old flat, which can go stale before approval.
+		Flat currentFlat = resident.getFlat();
+		if (currentFlat != null) {
+			currentFlat.setOccupant(null);
 			flatRepository.save(currentFlat);
 		}
 
-		newFlat.setResidentId(request.getResidentUserId());
+		newFlat.setOccupant(resident.getUser());
 		flatRepository.save(newFlat);
 
-		resident.setFlatId(newFlat.getId());
+		resident.setFlat(newFlat);
 		resident.setVerificationStatus(VerificationStatus.VERIFIED);
 		residentRepository.save(resident);
 
 		request.setStatus(RequestStatus.APPROVED);
-		request.setReviewedBy(reviewerId);
+		request.setReviewer(refs.ref(User.class, reviewerId));
 		request.setReviewedAt(LocalDateTime.now());
 		if (displacedNote != null) {
 			request.setAdminNotes(displacedNote);
 		}
 		requestRepository.save(request);
 
-		historyRepository.save(ResidentRelocationHistory.builder().residentUserId(request.getResidentUserId())
-				.oldFlatId(request.getOldFlatId()).oldSocietyId(request.getOldSocietyId()).newFlatId(newFlat.getId())
-				.newSocietyId(request.getTargetSocietyId()).approvedBy(reviewerId).build());
+		historyRepository.save(ResidentRelocationHistory.builder().resident(resident)
+				.oldFlat(request.getOldFlat()).oldSociety(request.getOldSociety()).newFlat(newFlat)
+				.newSociety(targetSociety).approver(refs.ref(User.class, reviewerId)).build());
 
 		try {
-			// Was: three separate flatRepository/societyRepository.findById calls
-			// -- now navigations off the already-loaded request entity.
 			String oldFlatNumber = request.getOldFlat() != null ? request.getOldFlat().getFlatNumber() : "—";
 			String oldSocietyName = request.getOldSociety() != null ? request.getOldSociety().getName() : "—";
 			String newSocietyName = request.getTargetSociety() != null ? request.getTargetSociety().getName() : "—";
 
-			notificationService.handleRelocationApproved(new com.pravesh.dto.request.RelocationApprovedRequest(request.getResidentUserId(),
+			notificationService.handleRelocationApproved(new com.pravesh.dto.request.RelocationApprovedRequest(residentUserId,
 					newFlat.getFlatNumber(), newFlat.getTower(), newSocietyName, oldFlatNumber, oldSocietyName));
 		} catch (Exception e) {
-			log.warn("Failed to notify resident {} of relocation approval: {}", request.getResidentUserId(),
-					e.getMessage());
+			log.warn("Failed to notify resident {} of relocation approval: {}", residentUserId, e.getMessage());
 		}
 
 		return toResponse(request);
@@ -205,7 +193,7 @@ public class ResidentRelocationService {
 
 		request.setStatus(RequestStatus.REJECTED);
 		request.setAdminNotes(reason);
-		request.setReviewedBy(reviewerId);
+		request.setReviewer(refs.ref(User.class, reviewerId));
 		request.setReviewedAt(LocalDateTime.now());
 		requestRepository.save(request);
 
@@ -213,7 +201,7 @@ public class ResidentRelocationService {
 	}
 
 	public RelocationRequestResponse getMyPendingRequest(Long residentUserId) {
-		return requestRepository.findByResidentUserIdAndStatus(residentUserId, RequestStatus.PENDING)
+		return requestRepository.findByResident_UserIdAndStatus(residentUserId, RequestStatus.PENDING)
 				.map(this::toResponse).orElse(null);
 	}
 
@@ -222,7 +210,7 @@ public class ResidentRelocationService {
 		ResidentRelocationRequest request = requestRepository.findById(requestId)
 				.orElseThrow(() -> new ResourceNotFoundException("Request not found"));
 
-		if (!request.getResidentUserId().equals(residentUserId)) {
+		if (!request.getResident().getUserId().equals(residentUserId)) {
 			throw new org.springframework.security.access.AccessDeniedException("This request is not yours");
 		}
 		if (request.getStatus() != RequestStatus.PENDING) {
@@ -245,9 +233,6 @@ public class ResidentRelocationService {
 	}
 
 	private RelocationRequestResponse toResponse(ResidentRelocationRequest r) {
-		// Was: four separate userRepository/flatRepository/societyRepository
-		// findById calls -- now navigations off the already-loaded request
-		// entity via the mapped relationships.
 		String residentName = (r.getResident() != null && r.getResident().getUser() != null)
 				? r.getResident().getUser().getName() : "Unknown";
 		String oldFlatNumber = r.getOldFlat() != null ? r.getOldFlat().getFlatNumber() : "—";
@@ -264,9 +249,9 @@ public class ResidentRelocationService {
 		ResidentRelocationRequest request = requestRepository.findById(requestId)
 				.orElseThrow(() -> new ResourceNotFoundException("Relocation request not found"));
 
-		boolean isOwner = request.getResidentUserId().equals(callerId);
+		boolean isOwner = request.getResident().getUserId().equals(callerId);
 		boolean isAdminOfTargetSociety = "SOCIETY_ADMIN".equals(callerRole)
-				&& request.getTargetSocietyId().equals(callerSocietyId);
+				&& request.getTargetSociety().getId().equals(callerSocietyId);
 
 		if (!isOwner && !isAdminOfTargetSociety) {
 			throw new org.springframework.security.access.AccessDeniedException(

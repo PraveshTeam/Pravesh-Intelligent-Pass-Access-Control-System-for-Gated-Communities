@@ -18,34 +18,21 @@ public class SosAlert {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Written server-side from the authenticated resident's own id, never
-    // from the request body.
-    @Column(name = "resident_user_id", nullable = false)
-    private Long residentUserId;
-
+    // Set server-side from the authenticated resident, never from the request body.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "resident_user_id", insertable = false, updatable = false)
+    @JoinColumn(name = "resident_user_id", nullable = false)
     private Resident resident;
 
-    @Column(name = "flat_id", nullable = false)
-    private Long flatId;
-
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "flat_id", insertable = false, updatable = false)
+    @JoinColumn(name = "flat_id", nullable = false)
     private Flat flat;
 
-    // CRITICAL for multi-tenancy: set server-side from the resident's own JWT
-    // societyId claim, never trusted from the client -- guards/admins fetch
-    // "active alerts" scoped by this. Relationship is read-only for the same
-    // reason as elsewhere in this codebase.
-    @Column(name = "society_id", nullable = false)
-    private Long societyId;
-
+    // Multi-tenancy key: guards/admins fetch active alerts scoped by this.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "society_id", insertable = false, updatable = false)
+    @JoinColumn(name = "society_id", nullable = false)
     private Society society;
 
     @Enumerated(EnumType.STRING)
@@ -59,13 +46,10 @@ public class SosAlert {
     @Column(nullable = false, length = 20)
     private SosStatus status;
 
-    // Written server-side from the acknowledging guard/admin's own id.
-    @Column(name = "acknowledged_by")
-    private Long acknowledgedBy;
-
+    // Set server-side from the acknowledging guard/admin.
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "acknowledged_by", insertable = false, updatable = false)
+    @JoinColumn(name = "acknowledged_by")
     private User acknowledgedByUser;
 
     @Column(name = "acknowledged_at")
@@ -77,10 +61,7 @@ public class SosAlert {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    // Inverse of SosStatusHistory.sosAlertId -- full audit trail of every
-    // status transition for this alert. Plain read-only mappedBy, no
-    // cascade/orphanRemoval, matching the rest of this codebase (nothing
-    // deletes a SosAlert today).
+    // Full audit trail of every status transition for this alert.
     @JsonIgnore
     @Builder.Default
     @OneToMany(mappedBy = "sosAlert", fetch = FetchType.LAZY)

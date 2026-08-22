@@ -15,7 +15,8 @@ public class FlatService {
 
     public List<FlatResponse> listFlats(Long societyId) {
         return flatRepository.findBySocietyId(societyId).stream()
-                .map(f -> new FlatResponse(f.getId(), f.getFlatNumber(), f.getTower(), f.getResidentId()))
+                .map(f -> new FlatResponse(f.getId(), f.getFlatNumber(), f.getTower(),
+                        f.getOccupant() != null ? f.getOccupant().getId() : null))
                 .toList();
     }
 }

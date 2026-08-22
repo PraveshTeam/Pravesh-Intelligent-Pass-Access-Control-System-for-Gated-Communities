@@ -48,7 +48,7 @@ public class GuardShiftController {
             @AuthenticationPrincipal AuthenticatedUser caller) {
 
         var activeShift = guardShiftRepository
-                .findTopByGuardUserIdAndShiftEndIsNullOrderByShiftStartDesc(caller.userId());
+                .findTopByGuard_UserIdAndShiftEndIsNullOrderByShiftStartDesc(caller.userId());
 
         if (activeShift.isEmpty()) {
             return ResponseEntity.ok(ApiResponse.ok("No active shift",
@@ -57,7 +57,7 @@ public class GuardShiftController {
 
         GuardShift shift = activeShift.get();
         return ResponseEntity.ok(ApiResponse.ok("Active shift found",
-                new ShiftStatusResponse(true, shift.getId(), shift.getGateId(), shift.getOnDutyName())));
+                new ShiftStatusResponse(true, shift.getId(), shift.getGate().getId(), shift.getOnDutyName())));
     }
 
     public record ShiftStatusResponse(

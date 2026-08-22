@@ -54,7 +54,8 @@ public class ValidationController {
 
         LocalDate d = date != null ? LocalDate.parse(date) : LocalDate.now();
         var entries = validationService.getEntriesByGate(gateId, d, caller.societyId()).stream()
-                .map(e -> new EntryLogResponse(e.getId(), e.getVisitorName(), e.getResidentId(),
+                .map(e -> new EntryLogResponse(e.getId(), e.getVisitorName(),
+                        e.getResident() != null ? e.getResident().getUserId() : null,
                         e.getEntryType().name(), e.getScanResult().name(), e.getDenyReason(), e.getScannedAt()))
                 .toList();
 
@@ -68,7 +69,8 @@ public class ValidationController {
             @PathVariable Long flatId) {
 
         var entries = validationService.getEntriesByFlat(caller.userId(), caller.societyId()).stream()
-                .map(e -> new EntryLogResponse(e.getId(), e.getVisitorName(), e.getResidentId(),
+                .map(e -> new EntryLogResponse(e.getId(), e.getVisitorName(),
+                        e.getResident() != null ? e.getResident().getUserId() : null,
                         e.getEntryType().name(), e.getScanResult().name(), e.getDenyReason(), e.getScannedAt()))
                 .toList();
 
@@ -80,7 +82,8 @@ public class ValidationController {
     public ResponseEntity<ApiResponse<List<EntryLogResponse>>> allEntries(
             @AuthenticationPrincipal AuthenticatedUser caller) {
         var entries = validationService.getAllEntriesInSociety(caller.societyId()).stream()
-                .map(e -> new EntryLogResponse(e.getId(), e.getVisitorName(), e.getResidentId(),
+                .map(e -> new EntryLogResponse(e.getId(), e.getVisitorName(),
+                        e.getResident() != null ? e.getResident().getUserId() : null,
                         e.getEntryType().name(), e.getScanResult().name(), e.getDenyReason(), e.getScannedAt()))
                 .toList();
         return ResponseEntity.ok(ApiResponse.ok("All entries in society", entries));

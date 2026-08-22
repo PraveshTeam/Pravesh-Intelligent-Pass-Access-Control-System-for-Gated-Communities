@@ -14,7 +14,7 @@ public interface TripJoinRequestRepository extends JpaRepository<TripJoinRequest
 
     Optional<TripJoinRequest> findByIdAndTripId(Long id, Long tripId);
 
-    Optional<TripJoinRequest> findByTripIdAndRequesterId(Long tripId, Long requesterId);
+    Optional<TripJoinRequest> findByTripIdAndRequester_Id(Long tripId, Long requesterId);
 
     long countByTripIdAndStatus(Long tripId, JoinRequestStatus status);
 }

@@ -4,6 +4,8 @@ import com.pravesh.dto.request.CreatePassRequest;
 import com.pravesh.dto.response.PassLockResponse;
 import com.pravesh.dto.response.PassResponse;
 import com.pravesh.dto.response.PassValidationResponse;
+import com.pravesh.entity.Resident;
+import com.pravesh.entity.Society;
 import com.pravesh.entity.VisitorPass;
 import com.pravesh.entity.enums.PassStatus;
 import com.pravesh.entity.enums.PassType;
@@ -12,6 +14,7 @@ import com.pravesh.exception.ResourceNotFoundException;
 import com.pravesh.dto.request.PassCreatedRequest;
 import com.pravesh.dto.request.PassRevokedRequest;
 import com.pravesh.repository.VisitorPassRepository;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +33,7 @@ public class PassService {
 	private final com.pravesh.service.NotificationService notificationService;
 	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PassService.class);
 	private final com.pravesh.service.UserDirectoryService userDirectoryService;
+	private final EntityRefs refs;
 
 	@Transactional
 	public PassResponse createPass(Long residentId, Long societyId, CreatePassRequest req) {
@@ -48,7 +52,8 @@ public class PassService {
 
 		String uuid = UUID.randomUUID().toString();
 
-		VisitorPass pass = VisitorPass.builder().residentId(residentId).societyId(societyId).uuid(uuid)
+		VisitorPass pass = VisitorPass.builder().resident(refs.ref(Resident.class, residentId))
+				.society(refs.ref(Society.class, societyId)).uuid(uuid)
 				.visitorName(req.visitorName()).visitorPhone(req.visitorPhone()).passType(req.passType())
 				.usesAllowed(req.passType() == PassType.MULTI_USE ? req.usesAllowed() : null)
 				.usesRemaining(req.passType() == PassType.MULTI_USE ? req.usesAllowed() : null)
@@ -77,19 +82,19 @@ public class PassService {
 	}
 
 	public List<PassResponse> getMyActivePasses(Long residentId, Long societyId) {
-		return passRepository.findByResidentIdAndStatusAndSocietyId(residentId, PassStatus.ACTIVE, societyId).stream()
+		return passRepository.findByResident_UserIdAndStatusAndSocietyId(residentId, PassStatus.ACTIVE, societyId).stream()
 				.map(p -> toResponse(p, null)).toList();
 	}
 
 	public List<PassResponse> getMyPassHistory(Long residentId, Long societyId) {
-		return passRepository.findByResidentIdAndSocietyId(residentId, societyId).stream().map(p -> toResponse(p, null))
+		return passRepository.findByResident_UserIdAndSocietyId(residentId, societyId).stream().map(p -> toResponse(p, null))
 				.toList();
 	}
 
 	public PassResponse getPassDetail(Long passId, Long residentId) {
 		VisitorPass pass = passRepository.findById(passId)
 				.orElseThrow(() -> new ResourceNotFoundException("Pass not found"));
-		if (!pass.getResidentId().equals(residentId)) {
+		if (!pass.getResident().getUserId().equals(residentId)) {
 			throw new org.springframework.security.access.AccessDeniedException("This pass does not belong to you");
 		}
 		return toResponse(pass, null);
@@ -98,7 +103,7 @@ public class PassService {
 	public String regenerateQr(Long passId, Long residentId) {
 		VisitorPass pass = passRepository.findById(passId)
 				.orElseThrow(() -> new ResourceNotFoundException("Pass not found"));
-		if (!pass.getResidentId().equals(residentId)) {
+		if (!pass.getResident().getUserId().equals(residentId)) {
 			throw new org.springframework.security.access.AccessDeniedException("This pass does not belong to you");
 		}
 		if (pass.getStatus() != PassStatus.ACTIVE) {
@@ -118,7 +123,7 @@ public class PassService {
 		VisitorPass pass = passRepository.findById(passId)
 				.orElseThrow(() -> new ResourceNotFoundException("Pass not found"));
 
-		if (!pass.getResidentId().equals(residentId)) {
+		if (!pass.getResident().getUserId().equals(residentId)) {
 			throw new org.springframework.security.access.AccessDeniedException("This pass does not belong to you");
 		}
 		if (pass.getStatus() != PassStatus.ACTIVE) {
@@ -131,12 +136,11 @@ public class PassService {
 
 		try {
 			notificationService.handlePassRevoked(
-					new PassRevokedRequest(pass.getResidentId(), pass.getVisitorName(), pass.getUuid()));
+					new PassRevokedRequest(pass.getResident().getUserId(), pass.getVisitorName(), pass.getUuid()));
 		} catch (Exception e) {
+			// Non-fatal: the revocation itself already committed.
 			log.warn("Failed to notify Notification-Service of pass revocation for pass {}: {}", pass.getId(),
 					e.getMessage());
-			// Non-fatal: revocation itself already succeeded and committed.
-			// Notification-Service isn't live until Day 10 — this is expected until then.
 		}
 	}
 
@@ -148,7 +152,7 @@ public class PassService {
 			return PassValidationResponse.denied("QR_INVALID");
 		}
 
-		if (!pass.getSocietyId().equals(callerSocietyId)) {
+		if (!pass.getSociety().getId().equals(callerSocietyId)) {
 			return PassValidationResponse.denied("WRONG_SOCIETY");
 		}
 
@@ -171,10 +175,7 @@ public class PassService {
 			pass.setStatus(PassStatus.CONSUMED);
 
 		} else if (pass.getPassType() == PassType.RECURRING_DAILY) {
-			// One entry per calendar day. The pass stays ACTIVE (and keeps the same
-			// UUID) for its whole validity window — we only track which day it was
-			// last used. Date comparison is stateless, so nothing breaks if the
-			// service is down at midnight.
+			// One entry per calendar day; the pass itself stays ACTIVE.
 			LocalDate today = LocalDate.now();
 			if (today.equals(pass.getLastUsedDate())) {
 				return PassValidationResponse.denied("ALREADY_USED_TODAY");
@@ -188,7 +189,7 @@ public class PassService {
 			}
 		}
 		passRepository.save(pass);
-		return PassValidationResponse.granted(pass.getId(), pass.getResidentId(), pass.getVisitorName(),
+		return PassValidationResponse.granted(pass.getId(), pass.getResident().getUserId(), pass.getVisitorName(),
 				pass.getPassType().name());
 	}
 

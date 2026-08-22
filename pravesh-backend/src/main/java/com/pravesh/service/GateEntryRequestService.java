@@ -6,6 +6,7 @@ import com.pravesh.dto.response.ResidentDirectoryEntry;
 import com.pravesh.entity.*;
 import com.pravesh.exception.*;
 import com.pravesh.repository.*;
+import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,7 @@ public class GateEntryRequestService {
     private final GuardRepository guardRepository;
     private final com.pravesh.service.NotificationService notificationService;
     private final com.pravesh.service.ValidationService validationService;
+    private final EntityRefs refs;
 
     @Transactional
     public GateEntryRequestResponse createRequest(CreateGateEntryRequest req, Long guardUserId, Long societyId) {
@@ -37,33 +39,29 @@ public class GateEntryRequestService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No flat " + req.claimedFlatNumber() + " found in this society"));
 
-        if (flat.getResidentId() == null) {
+        var occupant = flat.getOccupant();
+        if (occupant == null) {
             throw new InvalidStateException("Flat " + req.claimedFlatNumber() + " has no resident on record");
         }
 
         GateEntryRequest entry = GateEntryRequest.builder()
-                .societyId(societyId)
-                .gateId(guard.getGateId())
-                .guardUserId(guardUserId)
+                .society(refs.ref(Society.class, societyId))
+                .gate(guard.getGate())
+                .guard(guard)
                 .visitorName(req.visitorName())
                 .visitorPhone(req.visitorPhone())
                 .claimedFlatNumber(req.claimedFlatNumber())
                 .reason(req.reason())
-                .flatId(flat.getId())
-                .residentId(flat.getResidentId())
+                .flat(flat)
+                .resident(refs.ref(Resident.class, occupant.getId()))
                 .build();
 
         entry = gateEntryRequestRepository.save(entry);
 
         try {
-            // Was: userRepository.findById(flat.getResidentId()) -- now a
-            // single navigation off the already-loaded Flat (occupant).
-            var resident = flat.getOccupant();
-            if (resident != null) {
-                notificationService.handleGateEntryRequest(new com.pravesh.dto.request.GateEntryNotifyRequest(
-                        resident.getId(), resident.getPhone(),
-                        req.visitorName(), req.claimedFlatNumber(), entry.getId()));
-            }
+            notificationService.handleGateEntryRequest(new com.pravesh.dto.request.GateEntryNotifyRequest(
+                    occupant.getId(), occupant.getPhone(),
+                    req.visitorName(), req.claimedFlatNumber(), entry.getId()));
         } catch (Exception e) {
             log.warn("Failed to notify resident of gate entry request {}: {}", entry.getId(), e.getMessage());
         }
@@ -72,14 +70,14 @@ public class GateEntryRequestService {
     }
 
     public GateEntryRequestResponse getStatus(Long id, Long guardUserId) {
-        GateEntryRequest entry = gateEntryRequestRepository.findByIdAndGuardUserId(id, guardUserId)
+        GateEntryRequest entry = gateEntryRequestRepository.findByIdAndGuard_UserId(id, guardUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
         return toResponse(entry);
     }
 
     public List<GateEntryRequestResponse> getMyPendingRequests(Long residentId) {
         return gateEntryRequestRepository
-                .findByResidentIdAndStatusOrderByCreatedAtDesc(residentId, GateRequestStatus.PENDING)
+                .findByResident_UserIdAndStatusOrderByCreatedAtDesc(residentId, GateRequestStatus.PENDING)
                 .stream().map(this::toResponse).toList();
     }
 
@@ -88,7 +86,7 @@ public class GateEntryRequestService {
         GateEntryRequest entry = gateEntryRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
 
-        if (!entry.getResidentId().equals(residentId)) {
+        if (!entry.getResident().getUserId().equals(residentId)) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "This request is not addressed to you");
         }
@@ -107,8 +105,9 @@ public class GateEntryRequestService {
 
         try {
             validationService.logWalkInEntry(new com.pravesh.dto.request.WalkInEntryLogRequest(
-                    entry.getResidentId(), entry.getVisitorName(), entry.getGuardUserId(), entry.getGateId(),
-                    entry.getSocietyId(), approve ? "GRANTED" : "DENIED",
+                    entry.getResident().getUserId(), entry.getVisitorName(),
+                    entry.getGuard().getUserId(), entry.getGate().getId(),
+                    entry.getSociety().getId(), approve ? "GRANTED" : "DENIED",
                     approve ? null : "RESIDENT_DENIED"));
         } catch (Exception e) {
             log.warn("Failed to log walk-in entry for gate entry request {}: {}", entry.getId(), e.getMessage());
@@ -131,8 +130,9 @@ public class GateEntryRequestService {
             for (GateEntryRequest entry : stale) {
                 try {
                     validationService.logWalkInEntry(new com.pravesh.dto.request.WalkInEntryLogRequest(
-                            entry.getResidentId(), entry.getVisitorName(), entry.getGuardUserId(),
-                            entry.getGateId(), entry.getSocietyId(), "NO_RESPONSE", "RESIDENT_NO_RESPONSE"));
+                            entry.getResident().getUserId(), entry.getVisitorName(),
+                            entry.getGuard().getUserId(), entry.getGate().getId(),
+                            entry.getSociety().getId(), "NO_RESPONSE", "RESIDENT_NO_RESPONSE"));
                 } catch (Exception e) {
                     log.warn("Failed to log expired walk-in entry for gate entry request {}: {}",
                             entry.getId(), e.getMessage());
@@ -149,10 +149,7 @@ public class GateEntryRequestService {
     
     public List<ResidentDirectoryEntry> getSocietyResidents(Long societyId) {
         return flatRepository.findBySocietyId(societyId).stream()
-                .filter(f -> f.getResidentId() != null)
                 .map(f -> {
-                    // Was: userRepository.findById(f.getResidentId()) -- now a
-                    // single navigation off the already-loaded Flat (occupant).
                     var user = f.getOccupant();
                     if (user == null) return null;
                     return new ResidentDirectoryEntry(

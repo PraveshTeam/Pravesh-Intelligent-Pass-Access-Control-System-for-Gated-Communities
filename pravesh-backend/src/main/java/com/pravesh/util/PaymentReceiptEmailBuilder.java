@@ -1,10 +1,6 @@
 package com.pravesh.util;
 
-/**
- * Inline-styled HTML receipt. Email clients strip <style> blocks and external
- * stylesheets unpredictably, so every rule here is inline — the only reliable
- * way to guarantee consistent rendering across Gmail, Outlook, and mobile mail apps.
- */
+// Inline-styled HTML receipt -- email clients strip <style> blocks.
 public final class PaymentReceiptEmailBuilder {
 
     private PaymentReceiptEmailBuilder() {}

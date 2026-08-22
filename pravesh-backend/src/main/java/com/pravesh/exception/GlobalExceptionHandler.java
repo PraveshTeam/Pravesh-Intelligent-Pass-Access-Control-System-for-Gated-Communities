@@ -14,11 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Single, application-wide exception handler.
- * Consolidated from the per-service GlobalExceptionHandlers that existed in each
- * microservice (sos, activity, forum, pass, payment, user, validation, analytics, notification).
- */
+// Single, application-wide exception handler.
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
