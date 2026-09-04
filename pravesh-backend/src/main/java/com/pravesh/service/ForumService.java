@@ -5,13 +5,10 @@ import com.pravesh.dto.request.CreatePostRequest;
 import com.pravesh.dto.response.ForumCommentResponse;
 import com.pravesh.dto.response.PostResponse;
 import com.pravesh.entity.ForumPost;
-import com.pravesh.entity.Society;
-import com.pravesh.entity.User;
 import com.pravesh.exception.InvalidStateException;
 import com.pravesh.exception.ResourceNotFoundException;
 import com.pravesh.dto.response.UserContactResponse;
 import com.pravesh.repository.ForumPostRepository;
-import com.pravesh.util.EntityRefs;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,18 +30,18 @@ public class ForumService {
 
     private final ForumPostRepository postRepository;
     private final com.pravesh.service.UserDirectoryService userDirectoryService;
-    private final EntityRefs refs;
 
 
-    // Scoped to the caller's own society; societyId comes from the JWT, never
-    // from a request parameter.
+    // SECURITY-CRITICAL: scoped to the caller's own society. societyId comes
+    // from the caller's JWT (X-Society-Id header set by the gateway), never
+    // from a request parameter, so nobody can pass a different society's id
+    // to browse a forum they don't belong to.
     public List<PostResponse> listPosts(String category, Long societyId) {
         List<ForumPost> posts = (category == null || category.isBlank())
-                ? postRepository.findByParentPostIsNullAndSocietyIdAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(societyId)
-                : postRepository.findByParentPostIsNullAndSocietyIdAndCategoryAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(societyId, category);
+                ? postRepository.findByParentPostIdIsNullAndSocietyIdAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(societyId)
+                : postRepository.findByParentPostIdIsNullAndSocietyIdAndCategoryAndDeletedAtIsNullOrderByPinnedDescCreatedAtDesc(societyId, category);
 
-        Map<Long, String> authorNames = resolveAuthorNames(
-                posts.stream().map(p -> p.getAuthor().getId()).collect(Collectors.toSet()));
+        Map<Long, String> authorNames = resolveAuthorNames(posts.stream().map(ForumPost::getAuthorId).collect(Collectors.toSet()));
 
         return posts.stream().map(p -> toPostResponse(p, authorNames)).toList();
     }
@@ -56,8 +53,8 @@ public class ForumService {
         }
 
         ForumPost post = ForumPost.builder()
-                .author(refs.ref(User.class, authorId))
-                .society(refs.ref(Society.class, societyId))
+                .authorId(authorId)
+                .societyId(societyId)
                 .category(req.category())
                 .title(req.title())
                 .body(req.body())
@@ -69,13 +66,14 @@ public class ForumService {
     }
 
     public List<ForumCommentResponse> listComments(Long postId, Long callerSocietyId) {
-        // Society-scoped lookup: blocks listing comments on another society's post.
+        // This lookup being society-scoped is what prevents anyone from listing
+        // comments on a post that belongs to a different society, even if they
+        // know/guess its id.
         postRepository.findByIdAndSocietyIdAndDeletedAtIsNull(postId, callerSocietyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found: " + postId));
 
         List<ForumPost> comments = postRepository.findByParentPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(postId);
-        Map<Long, String> authorNames = resolveAuthorNames(
-                comments.stream().map(c -> c.getAuthor().getId()).collect(Collectors.toSet()));
+        Map<Long, String> authorNames = resolveAuthorNames(comments.stream().map(ForumPost::getAuthorId).collect(Collectors.toSet()));
 
         return comments.stream().map(c -> toCommentResponse(c, authorNames)).toList();
     }
@@ -86,9 +84,9 @@ public class ForumService {
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found: " + postId));
 
         ForumPost comment = ForumPost.builder()
-                .author(refs.ref(User.class, authorId))
-                .society(parent.getSociety()) // inherits the parent's society
-                .parentPost(parent)
+                .authorId(authorId)
+                .societyId(callerSocietyId) // inherits the parent's society, not re-derived
+                .parentPostId(parent.getId())
                 .body(req.body())
                 .build();
         comment = postRepository.save(comment);
@@ -99,10 +97,12 @@ public class ForumService {
 
     @Transactional
     public void togglePin(Long postId, Long adminSocietyId) {
-        // An admin can only pin/unpin posts in their OWN society.
+        // An admin can only pin/unpin posts in their OWN society -- this closes
+        // the cross-society moderation hole (an admin acting on another
+        // society's post just by knowing its id).
         ForumPost post = postRepository.findByIdAndSocietyIdAndDeletedAtIsNull(postId, adminSocietyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found: " + postId));
-        if (post.getParentPost() != null) {
+        if (post.getParentPostId() != null) {
             throw new InvalidStateException("Only top-level posts can be pinned, not comments");
         }
         post.setPinned(!post.isPinned());
@@ -134,17 +134,15 @@ public class ForumService {
 
     private PostResponse toPostResponse(ForumPost p, Map<Long, String> authorNames) {
         int commentCount = postRepository.findByParentPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(p.getId()).size();
-        Long authorId = p.getAuthor().getId();
         return new PostResponse(
-                p.getId(), authorId, authorNames.get(authorId),
+                p.getId(), p.getAuthorId(), authorNames.get(p.getAuthorId()),
                 p.getCategory(), p.getTitle(), p.getBody(), p.isPinned(),
                 commentCount, p.getCreatedAt());
     }
 
     private ForumCommentResponse toCommentResponse(ForumPost c, Map<Long, String> authorNames) {
-        Long authorId = c.getAuthor().getId();
         return new ForumCommentResponse(
-                c.getId(), authorId, authorNames.get(authorId),
+                c.getId(), c.getAuthorId(), authorNames.get(c.getAuthorId()),
                 c.getBody(), c.getCreatedAt());
     }
 }

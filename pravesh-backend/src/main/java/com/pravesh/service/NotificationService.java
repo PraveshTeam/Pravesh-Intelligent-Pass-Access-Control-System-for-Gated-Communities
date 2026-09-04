@@ -20,8 +20,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-// Dispatches OTP / pass / SOS / payment / onboarding / relocation alerts via
-// email, SMS and WebSocket. Nothing is persisted -- no notification history.
+/**
+ * Sends OTP / pass / SOS / payment / onboarding / relocation alerts via
+ * email, SMS and WebSocket, directly and synchronously.
+ *
+ * There is no notification history/panel anymore: nothing here is persisted
+ * (no Mongo, no "notification center" API) — this class only dispatches
+ * messages, it never stores them. The app has one datastore (MySQL) now.
+ */
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
@@ -152,7 +158,13 @@ public class NotificationService {
 	private static final int OTP_EXPIRY_MINUTES = 10;
 	private static final String REGISTRATION_VERIFICATION = "REGISTRATION_VERIFICATION";
 
-	/** Sends an OTP by email/SMS, synchronously, in the caller's transaction. */
+	/**
+	 * Sends an OTP by email/SMS. Called directly (no queue, no persistence)
+	 * from AuthService (forgot-password) and RegistrationVerificationService
+	 * (registration OTP) — both used to write an outbox row that a background
+	 * poller published to RabbitMQ for this same logic to run a few seconds later;
+	 * now it just runs immediately, in the same transaction as the request.
+	 */
 	public void handleOtpRequested(String correlationId, Long userId, String email, String phone,
 			String otp, String channel, String purpose) {
 
@@ -182,7 +194,12 @@ public class NotificationService {
 				isRegistration ? REGISTRATION_VERIFICATION : "PASSWORD_RESET");
 	}
 
-	/** Pushes an SOS alert over WebSocket and SMSs the on-duty guard/admin. */
+	/**
+	 * Pushes an SOS alert over WebSocket and SMS's the on-duty guard/admin.
+	 * Called directly from SosService — used to go through an outbox row +
+	 * RabbitMQ queue + this same logic in a separate listener; now it's just
+	 * one synchronous call.
+	 */
 	public void handleSosEvent(String eventType, Long alertId, Long residentUserId, String residentName,
 			String residentPhone, String flatNumber, String category, String description,
 			String status, Long societyId) {
@@ -225,7 +242,12 @@ public class NotificationService {
 				contact.name(), contact.role(), residentName, flatNumber);
 	}
 
-	/** Emails a payment receipt once the webhook confirms payment. */
+	/**
+	 * Emails a payment receipt. Called directly from PaymentService right
+	 * after a webhook confirms payment — used to go through an outbox row +
+	 * RabbitMQ queue + this same logic in a separate listener; now it's just
+	 * one synchronous call in the webhook request.
+	 */
 	public void handlePaymentReceipt(Long paymentOrderId, Long residentId, double amount,
 			String purpose, java.time.LocalDateTime paidAt) {
 
