@@ -62,8 +62,6 @@ public class ResidentRelocationService {
 		if (oldFlat == null) {
 			throw new InvalidStateException("You must have a current flat before requesting relocation");
 		}
-		Flat oldFlat = flatRepository.findById(resident.getFlatId())
-				.orElseThrow(() -> new ResourceNotFoundException("Current flat not found"));
 
 		if (oldFlat.getSociety().getId().equals(req.targetSocietyId())
 				&& oldFlat.getFlatNumber().equalsIgnoreCase(req.claimedFlatNumber())) {
@@ -114,7 +112,6 @@ public class ResidentRelocationService {
 		boolean occupiedByOther = currentOccupantId != null && !currentOccupantId.equals(residentUserId);
 
 		if (occupiedByOther && !force) {
-			String occupantName = newFlat.getOccupant().getName();
 			// Was: userRepository.findById(newFlat.getResidentId()) -- now a
 			// single navigation off the already-loaded Flat (occupant).
 			String occupantName = newFlat.getOccupant() != null
@@ -132,7 +129,6 @@ public class ResidentRelocationService {
 				// Was: userRepository.findById(displaced.getUserId()) -- Resident
 				// already carries its User via the existing @MapsId relationship.
 				User displacedUser = displaced.getUser();
-				User displacedUser = userRepository.findById(displaced.getUserId()).orElse(null);
 				String displacedName = displacedUser != null ? displacedUser.getName()
 						: "resident #" + displaced.getUserId();
 
@@ -158,17 +154,7 @@ public class ResidentRelocationService {
 		Flat currentFlat = resident.getFlat();
 		if (currentFlat != null) {
 			currentFlat.setOccupant(null);
-		// Was: flatRepository.findById(resident.getFlatId()) -- now a single
-		// navigation off the already-loaded Resident.
-		if (resident.getFlatId() != null && resident.getFlat() != null) {
-			Flat currentFlat = resident.getFlat();
-			currentFlat.setResidentId(null);
 			flatRepository.save(currentFlat);
-		if (resident.getFlatId() != null) {
-			flatRepository.findById(resident.getFlatId()).ifPresent(currentFlat -> {
-				currentFlat.setResidentId(null);
-				flatRepository.save(currentFlat);
-			});
 		}
 
 		newFlat.setOccupant(resident.getUser());
@@ -196,11 +182,6 @@ public class ResidentRelocationService {
 			String oldFlatNumber = request.getOldFlat() != null ? request.getOldFlat().getFlatNumber() : "—";
 			String oldSocietyName = request.getOldSociety() != null ? request.getOldSociety().getName() : "—";
 			String newSocietyName = request.getTargetSociety() != null ? request.getTargetSociety().getName() : "—";
-			String oldFlatNumber = flatRepository.findById(request.getOldFlatId()).map(Flat::getFlatNumber).orElse("—");
-			String oldSocietyName = societyRepository.findById(request.getOldSocietyId()).map(Society::getName)
-					.orElse("—");
-			String newSocietyName = societyRepository.findById(request.getTargetSocietyId()).map(Society::getName)
-					.orElse("—");
 
 			notificationService.handleRelocationApproved(new com.pravesh.dto.request.RelocationApprovedRequest(residentUserId,
 					newFlat.getFlatNumber(), newFlat.getTower(), newSocietyName, oldFlatNumber, oldSocietyName));
@@ -270,12 +251,6 @@ public class ResidentRelocationService {
 		String oldFlatNumber = r.getOldFlat() != null ? r.getOldFlat().getFlatNumber() : "—";
 		String oldSocietyName = r.getOldSociety() != null ? r.getOldSociety().getName() : "—";
 		String targetSocietyName = r.getTargetSociety() != null ? r.getTargetSociety().getName() : "—";
-
-		String residentName = userRepository.findById(r.getResidentUserId()).map(User::getName).orElse("Unknown");
-		String oldFlatNumber = flatRepository.findById(r.getOldFlatId()).map(Flat::getFlatNumber).orElse("—");
-		String oldSocietyName = societyRepository.findById(r.getOldSocietyId()).map(Society::getName).orElse("—");
-		String targetSocietyName = societyRepository.findById(r.getTargetSocietyId()).map(Society::getName).orElse("—");
-
 
 		return new RelocationRequestResponse(r.getId(), residentName, oldFlatNumber, oldSocietyName,
 				r.getClaimedFlatNumber(), targetSocietyName, r.getDocumentType(), r.getStatus(), r.getAdminNotes(),
