@@ -29,33 +29,33 @@ public class ShiftCheckinService {
                 .orElseThrow(() -> new ResourceNotFoundException("Guard record not found"));
 
         // Close out any stale open shift (e.g. app crashed without a clean logout)
-        shiftRepository.findTopByGuard_UserIdAndShiftEndIsNullOrderByShiftStartDesc(guardUserId)
+        shiftRepository.findTopByGuardUserIdAndShiftEndIsNullOrderByShiftStartDesc(guardUserId)
                 .ifPresent(open -> {
                     open.setShiftEnd(LocalDateTime.now());
                     shiftRepository.save(open);
                 });
 
         GuardShift shift = GuardShift.builder()
-                .guard(guard)
-                .gate(guard.getGate())
+                .guardUserId(guardUserId)
+                .gateId(guard.getGateId())
                 .onDutyName(req.onDutyName())
                 .onDutyEmployeeId(req.onDutyEmployeeId())
                 .build();
         shift = shiftRepository.save(shift);
 
-        return new ShiftCheckinResponse(shift.getId(), shift.getGate().getId(),
+        return new ShiftCheckinResponse(shift.getId(), shift.getGateId(),
                 shift.getOnDutyName(), shift.getShiftStart());
     }
 
-    /** Used by the shift-required check (428 gate). */
+    /** Used by the shift-required check (428 gate) — returns the active shiftId or empty. */
     public Optional<Long> getActiveShiftId(Long guardUserId) {
         return shiftRepository
-                .findTopByGuard_UserIdAndShiftEndIsNullOrderByShiftStartDesc(guardUserId)
+                .findTopByGuardUserIdAndShiftEndIsNullOrderByShiftStartDesc(guardUserId)
                 .map(GuardShift::getId);
     }
 
     public List<GuardShiftResponse> getShiftHistory(Long guardUserId) {
-        return shiftRepository.findByGuard_UserIdOrderByShiftStartDesc(guardUserId).stream()
+        return shiftRepository.findByGuardUserIdOrderByShiftStartDesc(guardUserId).stream()
                 .map(s -> new GuardShiftResponse(s.getId(), s.getOnDutyName(),
                         s.getOnDutyEmployeeId(), s.getShiftStart(), s.getShiftEnd()))
                 .toList();
@@ -63,7 +63,7 @@ public class ShiftCheckinService {
     
     @Transactional
     public void endShift(Long guardUserId) {
-        shiftRepository.findTopByGuard_UserIdAndShiftEndIsNullOrderByShiftStartDesc(guardUserId)
+        shiftRepository.findTopByGuardUserIdAndShiftEndIsNullOrderByShiftStartDesc(guardUserId)
                 .ifPresentOrElse(shift -> {
                     shift.setShiftEnd(LocalDateTime.now());
                     shiftRepository.save(shift);

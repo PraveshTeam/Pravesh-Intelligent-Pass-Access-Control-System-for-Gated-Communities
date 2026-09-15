@@ -10,10 +10,9 @@ import java.util.Optional;
 
 public interface GateEntryRequestRepository extends JpaRepository<GateEntryRequest, Long> {
 
-    Optional<GateEntryRequest> findByIdAndGuard_UserId(Long id, Long guardUserId);
+    Optional<GateEntryRequest> findByIdAndGuardUserId(Long id, Long guardUserId);
 
-    List<GateEntryRequest> findByResident_UserIdAndStatusOrderByCreatedAtDesc(
-            Long residentId, GateRequestStatus status);
+    List<GateEntryRequest> findByResidentIdAndStatusOrderByCreatedAtDesc(Long residentId, GateRequestStatus status);
 
     List<GateEntryRequest> findByStatusAndExpiresAtBefore(GateRequestStatus status, LocalDateTime now);
 }

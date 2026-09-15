@@ -1,6 +1,5 @@
 package com.pravesh.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pravesh.entity.enums.VerificationStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -11,7 +10,6 @@ import lombok.*;
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class SocietyAdmin {
 
-    // Shared primary key with users.id, derived from the user relationship.
     @Id
     @Column(name = "user_id")
     private Long userId;
@@ -21,11 +19,8 @@ public class SocietyAdmin {
     @JoinColumn(name = "user_id")
     private User user;
 
-    // Set server-side once the society-registration request is approved.
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "society_id")
-    private Society society;
+    @Column(name = "society_id")
+    private Long societyId; 
 
     @Column(length = 50)
     private String designation;

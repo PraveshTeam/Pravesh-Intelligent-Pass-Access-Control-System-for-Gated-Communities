@@ -5,7 +5,6 @@ import com.pravesh.dto.request.ReassignGateRequest;
 import com.pravesh.dto.response.GuardResponse;
 import com.pravesh.entity.Gate;
 import com.pravesh.entity.Guard;
-import com.pravesh.entity.Society;
 import com.pravesh.entity.User;
 import com.pravesh.entity.enums.Role;
 import com.pravesh.exception.DuplicateResourceException;
@@ -15,7 +14,6 @@ import com.pravesh.dto.request.GuardCredentialsRequest;
 import com.pravesh.repository.GateRepository;
 import com.pravesh.repository.GuardRepository;
 import com.pravesh.repository.UserRepository;
-import com.pravesh.util.EntityRefs;
 import com.pravesh.util.TempPasswordGenerator;
 import lombok.RequiredArgsConstructor;
 
@@ -35,7 +33,6 @@ public class GuardManagementService {
     private final GateRepository gateRepository;
     private final PasswordEncoder passwordEncoder;
     private final com.pravesh.service.NotificationService notificationService;
-    private final EntityRefs refs;
     private static final org.slf4j.Logger log =
             org.slf4j.LoggerFactory.getLogger(GuardManagementService.class);
 
@@ -51,7 +48,7 @@ public class GuardManagementService {
             gate = gateRepository.findById(req.gateId())
                     .orElseThrow(() -> new ResourceNotFoundException("Gate not found"));
 
-            if (!gate.getSociety().getId().equals(callerSocietyId)) {
+            if (!gate.getSocietyId().equals(callerSocietyId)) {
                 throw new org.springframework.security.access.AccessDeniedException(
                         "You cannot assign a guard to a gate outside your own society");
             }
@@ -61,7 +58,7 @@ public class GuardManagementService {
                         "Either gateId or newGateName must be provided");
             }
             gate = Gate.builder()
-                    .society(refs.ref(Society.class, callerSocietyId))
+                    .societyId(callerSocietyId)
                     .name(req.newGateName())
                     .location(req.newGateLocation())
                     .build();
@@ -88,8 +85,8 @@ public class GuardManagementService {
 
         Guard guard = Guard.builder()
                 .user(user)
-                .gate(gate)
-                .createdByAdmin(refs.ref(User.class, createdByAdminId))
+                .gateId(gate.getId())
+                .createdByAdminId(createdByAdminId)
                 .build();
         guardRepository.save(guard);
 
@@ -110,17 +107,13 @@ public class GuardManagementService {
     public List<GuardResponse> listGuards(Long societyId) {
         return guardRepository.findAll().stream()
                 .map(g -> {
-                    Gate gate = g.getGate();
-                    if (gate == null) {
-                        throw new ResourceNotFoundException("Gate not found");
-                    }
-                    if (!gate.getSociety().getId().equals(societyId)) {
+                    Gate gate = gateRepository.findById(g.getGateId())
+                            .orElseThrow(() -> new ResourceNotFoundException("Gate not found"));
+                    if (!gate.getSocietyId().equals(societyId)) {
                         return null;
                     }
-                    User u = g.getUser();
-                    if (u == null) {
-                        throw new ResourceNotFoundException("User not found");
-                    }
+                    User u = userRepository.findById(g.getUserId())
+                            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
                     return new GuardResponse(u.getId(), u.getName(), u.getPhone(),
                             gate.getId(), gate.getName(), g.getEmployeeCode(), u.isActive());
                 })
@@ -140,18 +133,16 @@ public class GuardManagementService {
         Gate newGate = gateRepository.findById(req.newGateId())
                 .orElseThrow(() -> new ResourceNotFoundException("Gate not found"));
 
-        if (!newGate.getSociety().getId().equals(callerSocietyId)) {
+        if (!newGate.getSocietyId().equals(callerSocietyId)) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "You cannot reassign a guard to a gate outside your own society");
         }
 
-        guard.setGate(newGate);
+        guard.setGateId(req.newGateId());
         guardRepository.save(guard);
 
-        User u = guard.getUser();
-        if (u == null) {
-            throw new ResourceNotFoundException("User not found");
-        }
+        User u = userRepository.findById(guardUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         return new GuardResponse(u.getId(), u.getName(), u.getPhone(),
                 newGate.getId(), newGate.getName(), guard.getEmployeeCode(), u.isActive());
