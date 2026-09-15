@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import {
-  getRelocationRequests, getRelocationDocument, approveRelocationRequest, rejectRelocationRequest
+  getOnboardingRequests, getOnboardingDocument,
+  approveOnboardingRequest, rejectOnboardingRequest
 } from '../../api/endpoints'
 import { useToast } from '../../context/ToastContext'
 import Navbar from '../../components/common/Navbar'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import FlatConflictModal from '../../components/common/FlatConflictModal'
 import BackButton from '../../components/common/BackButton'
+import FlatConflictModal from '../../components/common/FlatConflictModal'
 
-export default function AdminRelocationPage() {
+export default function AdminOnboardingPage() {
   const { showToast } = useToast()
   const [requests, setRequests] = useState([])
   const [statusFilter, setStatusFilter] = useState('PENDING')
@@ -26,9 +27,9 @@ export default function AdminRelocationPage() {
 
   const load = () => {
     setLoading(true)
-    getRelocationRequests(statusFilter)
+    getOnboardingRequests(statusFilter)
       .then(res => setRequests(res.data.data))
-      .catch(() => showToast('Failed to load relocation requests.', 'error'))
+      .catch(() => showToast('Failed to load requests.', 'error'))
       .finally(() => setLoading(false))
   }
 
@@ -37,7 +38,7 @@ export default function AdminRelocationPage() {
   const viewDoc = async (id) => {
     setViewingDocId(id)
     try {
-      const res = await getRelocationDocument(id)
+      const res = await getOnboardingDocument(id)
       window.open(URL.createObjectURL(res.data), '_blank')
     } catch {
       showToast('Failed to load document.', 'error')
@@ -49,8 +50,8 @@ export default function AdminRelocationPage() {
   const approve = async (id, force = false) => {
     setApprovingId(id)
     try {
-      await approveRelocationRequest(id, force)
-      showToast(force ? 'Approved — previous occupant reassigned.' : 'Relocation approved. Flat reassigned.', 'success')
+      await approveOnboardingRequest(id, force)
+      showToast(force ? 'Approved — previous occupant reassigned.' : 'Approved.', 'success')
       setConflict(null)
       setConflictRequestId(null)
       load()
@@ -77,7 +78,7 @@ export default function AdminRelocationPage() {
     if (!reason.trim()) { showToast('Provide a rejection reason.', 'warning'); return }
     setSubmittingRejectId(id)
     try {
-      await rejectRelocationRequest(id, reason)
+      await rejectOnboardingRequest(id, reason)
       showToast('Rejected.', 'success')
       setRejectingId(null); setReason(''); load()
     } catch (err) {
@@ -93,12 +94,7 @@ export default function AdminRelocationPage() {
       <div className="container py-4">
         <BackButton to="/admin" label="Back to Admin Dashboard" />
         <div className="page-header d-flex justify-content-between align-items-center">
-          <div>
-            <h4 className="mb-1"><i className="bi bi-signpost-2 me-2"></i>Relocation Requests</h4>
-            <p className="mb-0 opacity-75 small">
-              Residents requesting to move flat or society. Historical passes and entries are never changed.
-            </p>
-          </div>
+          <h4 className="mb-0"><i className="bi bi-person-check me-2"></i>Onboarding Requests</h4>
           <select className="form-select w-auto" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="PENDING">Pending</option>
             <option value="APPROVED">Approved</option>
@@ -110,22 +106,13 @@ export default function AdminRelocationPage() {
           {loading ? <LoadingSpinner text="Loading requests..." /> : (
           <table className="table">
             <thead>
-              <tr>
-                <th>Resident</th><th>From</th><th>To</th><th>Document</th><th>Status</th><th>Actions</th>
-              </tr>
+              <tr><th>Resident</th><th>Flat</th><th>Document</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {requests.map(r => (
                 <tr key={r.id}>
-                  <td data-label="Resident">{r.residentName}</td>
-                  <td data-label="From">
-                    <div className="small">{r.oldFlatNumber}</div>
-                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>{r.oldSocietyName}</div>
-                  </td>
-                  <td data-label="To">
-                    <div className="small">{r.claimedFlatNumber}</div>
-                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>{r.targetSocietyName}</div>
-                  </td>
+                  <td data-label="Resident">{r.userName}</td>
+                  <td data-label="Flat">{r.claimedFlatNumber} {r.tower ? `(${r.tower})` : ''}</td>
                   <td data-label="Document">
                     <button
                       className="btn btn-sm btn-outline-primary"
@@ -193,7 +180,7 @@ export default function AdminRelocationPage() {
                 </tr>
               ))}
               {requests.length === 0 && (
-                <tr><td colSpan={6} className="text-center text-muted py-3">No requests found.</td></tr>
+                <tr><td colSpan={5} className="text-center text-muted py-3">No requests found.</td></tr>
               )}
             </tbody>
           </table>

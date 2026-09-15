@@ -16,16 +16,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.List;
 
 
-/**
- * Single security filter chain for the whole monolith.
- *
- * Consolidated from 10 near-identical per-service SecurityConfigs plus the
- * api-gateway's routing-level JWT check. Differences that mattered were just
- * which paths were open (permitAll) — collected below. The old "/api/internal/**"
- * exemptions are gone because those endpoints only existed for Feign calls between
- * services, which are now direct in-process method calls and no longer exposed
- * over HTTP at all (see UserDirectoryService / NotificationService / PassService).
- */
+// Single security filter chain for the whole monolith. The old
+// "/api/internal/**" exemptions are gone -- those are in-process calls now.
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor

@@ -3,20 +3,20 @@ package com.pravesh.controller;
 import com.pravesh.dto.response.ApiResponse;
 import com.pravesh.dto.response.UserProfileResponse;
 import com.pravesh.entity.Flat;
+import com.pravesh.entity.Gate;
 import com.pravesh.entity.Society;
 import com.pravesh.entity.User;
 import com.pravesh.entity.enums.Role;
 import com.pravesh.exception.ResourceNotFoundException;
-import com.pravesh.repository.FlatRepository;
 import com.pravesh.repository.GuardRepository;
 import com.pravesh.repository.ResidentRepository;
 import com.pravesh.repository.SocietyAdminRepository;
-import com.pravesh.repository.SocietyRepository;
 import com.pravesh.repository.UserRepository;
 import com.pravesh.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,16 +31,14 @@ public class UserController {
     private final ResidentRepository residentRepository;
     private final GuardRepository guardRepository;
     private final SocietyAdminRepository societyAdminRepository;
-    private final FlatRepository flatRepository;
-    private final SocietyRepository societyRepository;
 
     @GetMapping("/me")
-    public ApiResponse<UserProfileResponse> getMe(@AuthenticationPrincipal AuthenticatedUser caller) {
-        return ApiResponse.ok("Profile", buildProfile(caller.userId()));
+    public ResponseEntity<ApiResponse<UserProfileResponse>> getMe(@AuthenticationPrincipal AuthenticatedUser caller) {
+        return ResponseEntity.ok(ApiResponse.ok("Profile", buildProfile(caller.userId())));
     }
 
     @PutMapping("/me")
-    public ApiResponse<UserProfileResponse> updateMe(
+    public ResponseEntity<ApiResponse<UserProfileResponse>> updateMe(
             @AuthenticationPrincipal AuthenticatedUser caller,
             @RequestBody UpdateProfileRequest req) {
 
@@ -55,7 +53,7 @@ public class UserController {
         }
         userRepository.save(user);
 
-        return ApiResponse.ok("Profile updated", buildProfile(caller.userId()));
+        return ResponseEntity.ok(ApiResponse.ok("Profile updated", buildProfile(caller.userId())));
     }
 
     private UserProfileResponse buildProfile(Long userId) {
@@ -64,38 +62,47 @@ public class UserController {
 
         String verificationStatus = null;
         Long flatId = null, gateId = null, societyId = null;
+        String flatNumber = null, tower = null, societyName = null;
 
         if (user.getRole() == Role.RESIDENT) {
             var r = residentRepository.findById(user.getId()).orElse(null);
             if (r != null) {
                 verificationStatus = r.getVerificationStatus().name();
-                flatId = r.getFlatId();
+                Flat flat = r.getFlat();
+                if (flat != null) {
+                    flatId = flat.getId();
+                    flatNumber = flat.getFlatNumber();
+                    tower = flat.getTower();
+                    Society society = flat.getSociety();
+                    if (society != null) {
+                        societyId = society.getId();
+                        societyName = society.getName();
+                    }
+                }
             }
         } else if (user.getRole() == Role.GUARD) {
             var g = guardRepository.findById(user.getId()).orElse(null);
-            if (g != null) gateId = g.getGateId();
+            if (g != null) {
+                Gate gate = g.getGate();
+                if (gate != null) {
+                    gateId = gate.getId();
+                    Society society = gate.getSociety();
+                    if (society != null) {
+                        societyId = society.getId();
+                        societyName = society.getName();
+                    }
+                }
+            }
         } else if (user.getRole() == Role.SOCIETY_ADMIN) {
             var a = societyAdminRepository.findById(user.getId()).orElse(null);
             if (a != null) {
                 verificationStatus = a.getVerificationStatus().name();
-                societyId = a.getSocietyId();
-            }
-        }
-
-        String flatNumber = null, tower = null, societyName = null;
-
-        if (flatId != null) {
-            Flat flat = flatRepository.findById(flatId).orElse(null);
-            if (flat != null) {
-                flatNumber = flat.getFlatNumber();
-                tower = flat.getTower();
-                if (societyId == null) {
-                    societyId = flat.getSocietyId();
+                Society society = a.getSociety();
+                if (society != null) {
+                    societyId = society.getId();
+                    societyName = society.getName();
                 }
             }
-        }
-        if (societyId != null) {
-            societyName = societyRepository.findById(societyId).map(Society::getName).orElse(null);
         }
 
         return new UserProfileResponse(

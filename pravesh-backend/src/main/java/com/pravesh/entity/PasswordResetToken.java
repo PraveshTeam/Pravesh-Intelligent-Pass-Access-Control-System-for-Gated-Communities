@@ -1,43 +1,38 @@
 package com.pravesh.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
 
-// OTP verification of an email/phone BEFORE the account exists -- keyed by the
-// raw contact value, since no user row exists yet.
 @Entity
-@Table(name = "registration_verifications")
+@Table(name = "password_reset_tokens")
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
-public class RegistrationVerification {
+public class PasswordResetToken {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** "EMAIL" or "PHONE" */
-    @Column(name = "contact_type", nullable = false, length = 10)
-    private String contactType;
-
-    @Column(name = "contact_value", nullable = false, length = 150)
-    private String contactValue;
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Column(name = "otp_hash", nullable = false)
     private String otpHash;
 
+    @Column(nullable = false, length = 20)
+    private String channel;
+
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
-    @Column(nullable = false)
+    @Column(name = "is_used", nullable = false)
     @Builder.Default
-    private boolean verified = false;
-
-    /** True once used to complete a registration (prevents replay). */
-    @Column(nullable = false)
-    @Builder.Default
-    private boolean consumed = false;
+    private boolean isUsed = false;
 
     @Column(name = "attempt_count", nullable = false)
     @Builder.Default

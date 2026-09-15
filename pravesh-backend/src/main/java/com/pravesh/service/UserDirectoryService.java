@@ -23,16 +23,8 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Consolidates what used to be three separate HTTP-only controllers
- * (InternalController, InternalResidentController, InternalSocietyController in
- * user-service) that existed solely so other microservices could reach user-service
- * data via Feign + the API gateway.
- *
- * Now that everything runs in one JVM, those other services (SosService, TripService,
- * ForumService, PaymentService, PassService, ValidationService, NotificationService...)
- * just autowire this service directly instead of making an HTTP call.
- */
+// Consolidates user-service's old internal HTTP controllers; other services
+// autowire this directly instead of making a Feign call.
 @Service
 @RequiredArgsConstructor
 public class UserDirectoryService {
@@ -48,8 +40,9 @@ public class UserDirectoryService {
     public FlatInternalResponse getFlat(Long id) {
         Flat flat = flatRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Flat not found"));
-        return new FlatInternalResponse(flat.getId(), flat.getSocietyId(),
-                flat.getFlatNumber(), flat.getTower(), flat.getResidentId());
+        return new FlatInternalResponse(flat.getId(), flat.getSociety().getId(),
+                flat.getFlatNumber(), flat.getTower(),
+                flat.getOccupant() != null ? flat.getOccupant().getId() : null);
     }
 
     public ShiftStatusResponse getShiftStatus(Long guardUserId) {
@@ -67,10 +60,8 @@ public class UserDirectoryService {
         Resident resident = residentRepository.findById(residentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Resident not found"));
 
-        if (resident.getFlatId() == null) {
-            return "Unassigned";
-        }
-        return flatRepository.findById(resident.getFlatId()).map(Flat::getFlatNumber).orElse("Unknown");
+        Flat flat = resident.getFlat();
+        return flat == null ? "Unassigned" : flat.getFlatNumber();
     }
 
     public ResidentContextResponse getResidentContext(Long userId) {
@@ -79,19 +70,19 @@ public class UserDirectoryService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        Flat flat = resident.getFlat();
         String flatNumber = null;
+        Long flatId = null;
         Long societyId = null;
-        if (resident.getFlatId() != null) {
-            Flat flat = flatRepository.findById(resident.getFlatId()).orElse(null);
-            if (flat != null) {
-                flatNumber = flat.getFlatNumber();
-                societyId = flat.getSocietyId();
-            }
+        if (flat != null) {
+            flatId = flat.getId();
+            flatNumber = flat.getFlatNumber();
+            societyId = flat.getSociety() != null ? flat.getSociety().getId() : null;
         }
 
         return new ResidentContextResponse(
                 user.getId(), user.getName(), user.getPhone(),
-                resident.getFlatId(), flatNumber, societyId);
+                flatId, flatNumber, societyId);
     }
 
     public EmergencyContactResponse getEmergencyContact(Long societyId) {
@@ -101,7 +92,7 @@ public class UserDirectoryService {
             Optional<GuardShift> activeShift = guardShiftRepository
                     .findTopByGateIdAndShiftEndIsNullOrderByShiftStartDesc(gate.getId());
             if (activeShift.isPresent()) {
-                Long guardUserId = activeShift.get().getGuardUserId();
+                Long guardUserId = activeShift.get().getGuard().getUserId();
                 User guardUser = userRepository.findById(guardUserId).orElse(null);
                 if (guardUser != null) {
                     return new EmergencyContactResponse("GUARD", guardUser.getName(), guardUser.getPhone());
@@ -109,7 +100,7 @@ public class UserDirectoryService {
             }
         }
 
-        // No guard currently on duty anywhere in this society — fall back to admin.
+        // No guard on duty in this society — fall back to an admin.
         return societyAdminRepository.findBySocietyId(societyId).stream()
                 .findFirst()
                 .map(admin -> {
