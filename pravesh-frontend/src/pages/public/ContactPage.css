@@ -1,0 +1,114 @@
+@import './public-theme.css';
+.contact-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 20px 60px;
+  color: #1f2937;
+
+  --p-navy: #1a3c5e;
+  --p-gold: #e8871a;
+  --p-border: #e2e8f0;
+  --p-text-muted: #5c6b7a;
+}
+
+.contact-page h2 {
+  color: var(--p-navy);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.contact-page .para { color: var(--p-text-muted); font-size: 15px; line-height: 1.7; }
+
+.contact-item h5 {
+  color: var(--p-navy);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.contact-link {
+  color: var(--p-navy);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.contact-link:hover { color: var(--p-gold); }
+
+.contact-form {
+  background: #f1efe8;
+  border: 1px solid var(--p-border);
+  border-radius: 14px;
+  padding: 36px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(26,60,94,0.06);
+}
+
+.contact-form::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--p-navy), var(--p-gold));
+}
+
+.contact-form .form-label {
+  color: var(--p-navy);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.custom-pravesh-input {
+  border: 1px solid var(--p-border) !important;
+  border-radius: 8px !important;
+  font-size: 15px;
+  padding: 10px 14px;
+}
+
+.custom-pravesh-input:focus {
+  border-color: var(--p-navy) !important;
+  box-shadow: 0 0 0 3px rgba(26,60,94,0.1) !important;
+}
+
+#thanks-pravesh {
+  background: #f4f6f9;
+  border: 1px solid rgba(25,135,84,0.2);
+  border-radius: 14px;
+  padding: 40px 32px;
+}
+
+
+/* ═══ PREMIUM OVERRIDES ═══════════════════════ */
+.contact-page { background: var(--pv-surface-2); }
+.contact-body {
+  max-width: 1100px; margin: -34px auto 0;
+  position: relative; z-index: 5;
+  padding: 0 24px 80px;
+}
+.contact-info, .contact-form { padding: 36px 32px; border-radius: 24px !important; height: 100%; }
+.contact-info h2, .contact-form h2 { font-size: 1.5rem; color: var(--pv-ink); }
+.contact-info .para, .contact-form .para { color: var(--pv-txt-mute); font-size: 14.5px; line-height: 1.75; }
+
+.contact-item h5 {
+  font-size: 14px; font-weight: 700; color: var(--pv-navy);
+  display: flex; align-items: center; margin-bottom: 4px;
+}
+.contact-item h5 i { color: var(--pv-gold); }
+.contact-item .para { margin: 0; font-size: 14px; }
+.contact-link { color: var(--pv-navy-lite) !important; text-decoration: none; }
+.contact-link:hover { color: var(--pv-gold) !important; }
+
+.custom-pravesh-input {
+  border-radius: 12px; border: 1px solid var(--pv-line);
+  padding: .7rem .9rem; font-size: 14.5px;
+  transition: border-color .25s var(--pv-ease), box-shadow .25s var(--pv-ease);
+}
+.custom-pravesh-input:focus {
+  border-color: var(--pv-gold);
+  box-shadow: 0 0 0 3px rgba(232,135,26,.16);
+}
+.contact-form .form-label { font-size: 13px; font-weight: 600; color: var(--pv-txt); }
+
+@media (max-width: 640px) {
+  .contact-body { padding: 0 18px 60px; }
+  .contact-info, .contact-form { padding: 26px 20px; }
+}
